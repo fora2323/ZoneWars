@@ -1,4 +1,5 @@
 #pragma once
+#include "raymath.h"
 #include "render/shading.h"
 
 extern Mesh gArenaMesh;

@@ -1,18 +1,20 @@
 #pragma once
 #include "raylib.h"
+#include "raymath.h"
 #include "rlgl.h"
 #include "core/math.h"
 
 constexpr int MAX_VERTICES = 32000;
 constexpr int MAX_INDICES = 96000;
-extern float v_buffer[MAX_VERTICES * 3];
-extern float n_buffer[MAX_VERTICES * 3];
-extern unsigned char c_buffer[MAX_VERTICES * 4];
-extern unsigned short i_buffer[MAX_INDICES];
-extern Mesh gCharMesh;
-extern Material gCharMat;
-extern int gVtxCount;
-extern int gIdxCount;
+
+inline float v_buffer[MAX_VERTICES * 3];
+inline float n_buffer[MAX_VERTICES * 3];
+inline unsigned char c_buffer[MAX_VERTICES * 4];
+inline unsigned short i_buffer[MAX_INDICES];
+inline Mesh gCharMesh = {0};
+inline Material gCharMat = {0};
+inline int gVtxCount = 0;
+inline int gIdxCount = 0;
 
 struct Vtx { Vector3 p, n; Color c; };
 
