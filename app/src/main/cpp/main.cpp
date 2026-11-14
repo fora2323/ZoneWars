@@ -2,19 +2,11 @@
 #include "character.h"
 #include "female_character.h"
 #include <cmath>
-#include <vector>
-
-struct Block {
-    Vector3 pos;
-    Vector3 size;
-    Color color;
-};
 
 struct Player {
     Vector3 pos;
+    Vector3 vel;
     float yaw;
-    float phase;
-    float amp;
     bool female;
 };
 
@@ -23,35 +15,33 @@ static float Clampf(float v, float lo, float hi)
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
+static float WrapAngle(float a)
+{
+    const float twoPi = 6.2831853f;
+    return a - twoPi * roundf(a / twoPi);
+}
+
 int main(void)
 {
     InitWindow(0, 0, "ZoneWars");
     SetTargetFPS(60);
 
-    std::vector<Block> blocks = {
-        { Vector3{ 6.0f, 1.0f, 4.0f }, Vector3{ 3.0f, 2.0f, 3.0f }, Color{ 150, 150, 160, 255 } },
-        { Vector3{ -8.0f, 1.5f, -6.0f }, Vector3{ 4.0f, 3.0f, 2.0f }, Color{ 140, 110, 80, 255 } },
-        { Vector3{ 12.0f, 0.5f, -10.0f }, Vector3{ 6.0f, 1.0f, 6.0f }, Color{ 120, 120, 120, 255 } },
-        { Vector3{ -14.0f, 2.0f, 8.0f }, Vector3{ 2.0f, 4.0f, 6.0f }, Color{ 90, 100, 130, 255 } },
-        { Vector3{ 0.0f, 0.75f, -14.0f }, Vector3{ 10.0f, 1.5f, 1.0f }, Color{ 170, 60, 60, 255 } },
-        { Vector3{ -18.0f, 1.0f, -16.0f }, Vector3{ 3.0f, 2.0f, 3.0f }, Color{ 180, 160, 60, 255 } },
-        { Vector3{ 18.0f, 1.25f, 12.0f }, Vector3{ 4.0f, 2.5f, 4.0f }, Color{ 60, 130, 90, 255 } },
-        { Vector3{ 4.0f, 0.5f, 20.0f }, Vector3{ 8.0f, 1.0f, 2.0f }, Color{ 110, 90, 150, 255 } },
-    };
-
     Camera3D cam = { 0 };
-    cam.up = Vector3{ 0.0f, 1.0f, 0.0f };
-    cam.fovy = 60.0f;
+    cam.up = V3(0.0f, 1.0f, 0.0f);
+    cam.fovy = 55.0f;
     cam.projection = CAMERA_PERSPECTIVE;
 
-    Player p = { Vector3{ 0.0f, 0.0f, 0.0f }, 0.0f, 0.0f, 0.0f, true };
+    Player p = { V3(0.0f, 0.0f, 0.0f), V3(0.0f, 0.0f, 0.0f), 0.0f, true };
+
+    AnimState anim;
+    InitAnim(anim);
+    Pose pose;
 
     float camYaw = 0.0f;
-    float camPitch = 0.45f;
-    const float camDist = 7.0f;
+    float camPitch = 0.4f;
+    const float camDist = 4.5f;
     const float joyRadius = 90.0f;
-    const float moveSpeed = 4.0f;
-    const float playerRadius = 0.35f;
+    const float moveSpeed = 3.5f;
 
     int joyId = -1;
     Vector2 joyOrigin = Vector2{ 0.0f, 0.0f };
@@ -59,18 +49,12 @@ int main(void)
     int lookId = -1;
     Vector2 lookLast = Vector2{ 0.0f, 0.0f };
 
-    BlinkState blink;
-    InitBlink(blink);
-    float animTime = 0.0f;
-
     while (!WindowShouldClose()) {
         float dt = GetFrameTime();
+        if (dt > 0.05f) dt = 0.05f;
         int sw = GetScreenWidth();
         int sh = GetScreenHeight();
         Rectangle switchBtn = Rectangle{ (float)sw - 190.0f, 20.0f, 170.0f, 50.0f };
-
-        UpdateBlink(blink, dt);
-        animTime += dt;
 
         float ix = 0.0f;
         float iz = 0.0f;
@@ -131,6 +115,7 @@ int main(void)
             iz -= joyKnob.y / joyRadius;
         }
         float ilen = sqrtf(ix * ix + iz * iz);
+        float mag = fminf(ilen, 1.0f);
         if (ilen > 1.0f) {
             ix /= ilen;
             iz /= ilen;
@@ -143,39 +128,28 @@ int main(void)
         float fz = -cosf(camYaw);
         float rx = cosf(camYaw);
         float rz = -sinf(camYaw);
-        float mx = fx * iz + rx * ix;
-        float mz = fz * iz + rz * ix;
-        bool moving = (ix != 0.0f || iz != 0.0f);
+        float dirX = fx * iz + rx * ix;
+        float dirZ = fz * iz + rz * ix;
 
-        if (moving) {
-            p.pos.x += mx * moveSpeed * dt;
-            p.pos.z += mz * moveSpeed * dt;
-            p.yaw = atan2f(mx, mz);
+        float wantX = dirX * moveSpeed * mag;
+        float wantZ = dirZ * moveSpeed * mag;
+        float accel = fminf(dt * 8.0f, 1.0f);
+        p.vel.x += (wantX - p.vel.x) * accel;
+        p.vel.z += (wantZ - p.vel.z) * accel;
+        p.pos.x += p.vel.x * dt;
+        p.pos.z += p.vel.z * dt;
+
+        float speed = sqrtf(p.vel.x * p.vel.x + p.vel.z * p.vel.z);
+        if (speed > 0.2f) {
+            float targetYaw = atan2f(p.vel.x, p.vel.z);
+            p.yaw += WrapAngle(targetYaw - p.yaw) * fminf(dt * 10.0f, 1.0f);
         }
 
-        p.pos.x = Clampf(p.pos.x, -55.0f, 55.0f);
-        p.pos.z = Clampf(p.pos.z, -55.0f, 55.0f);
+        p.pos.x = Clampf(p.pos.x, -60.0f, 60.0f);
+        p.pos.z = Clampf(p.pos.z, -60.0f, 60.0f);
 
-        for (const Block& b : blocks) {
-            float hx = b.size.x * 0.5f + playerRadius;
-            float hz = b.size.z * 0.5f + playerRadius;
-            float dx = p.pos.x - b.pos.x;
-            float dz = p.pos.z - b.pos.z;
-            if (fabsf(dx) < hx && fabsf(dz) < hz) {
-                float px = hx - fabsf(dx);
-                float pz = hz - fabsf(dz);
-                if (px < pz) {
-                    p.pos.x += (dx >= 0.0f ? px : -px);
-                } else {
-                    p.pos.z += (dz >= 0.0f ? pz : -pz);
-                }
-            }
-        }
-
-        float targetAmp = moving ? 1.0f : 0.0f;
-        p.amp += (targetAmp - p.amp) * Clampf(dt * 8.0f, 0.0f, 1.0f);
-        p.phase += dt * 9.0f;
-        if (p.phase > 6.2831853f) p.phase -= 6.2831853f;
+        bool moving = mag > 0.05f;
+        UpdateAnim(anim, dt, Clampf(speed / moveSpeed, 0.0f, 1.0f), moving);
 
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), switchBtn)) {
             p.female = !p.female;
@@ -184,30 +158,30 @@ int main(void)
             p.female = !p.female;
         }
 
-        Vector3 target = Vector3{ p.pos.x, 1.2f, p.pos.z };
+        Body body = p.female ? FemaleBody() : MaleBody();
+        ComputePose(pose, anim, body);
+
+        Vector3 target = V3(p.pos.x, 1.0f, p.pos.z);
         float cp = cosf(camPitch);
-        cam.position = Vector3{
+        cam.position = V3(
             target.x + sinf(camYaw) * cp * camDist,
             target.y + sinf(camPitch) * camDist,
             target.z + cosf(camYaw) * cp * camDist
-        };
+        );
         cam.target = target;
 
-        float breath = sinf(animTime * 2.2f) * 0.012f;
-
         BeginDrawing();
-        ClearBackground(SKYBLUE);
+        ClearBackground(Color{ 150, 200, 240, 255 });
 
         BeginMode3D(cam);
-        DrawPlane(Vector3{ 0.0f, 0.0f, 0.0f }, Vector2{ 120.0f, 120.0f }, Color{ 60, 130, 60, 255 });
-        for (const Block& b : blocks) {
-            DrawCube(b.pos, b.size.x, b.size.y, b.size.z, b.color);
-            DrawCubeWires(b.pos, b.size.x, b.size.y, b.size.z, Fade(BLACK, 0.35f));
-        }
+        DrawPlane(V3(0.0f, -0.01f, 0.0f), Vector2{ 200.0f, 200.0f }, Color{ 88, 140, 78, 255 });
+        DrawGrid(100, 2.0f);
+
+        float blink = BlinkAmount(anim);
         if (p.female) {
-            DrawFemaleCharacter(p.pos, p.yaw, p.phase, p.amp, breath, BlinkAmount(blink));
+            DrawFemaleCharacter(pose, p.pos, p.yaw, blink);
         } else {
-            DrawMaleCharacter(p.pos, p.yaw, p.phase, p.amp);
+            DrawMaleCharacter(pose, p.pos, p.yaw, blink);
         }
         EndMode3D();
 
