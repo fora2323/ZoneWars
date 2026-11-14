@@ -38,9 +38,16 @@ int main() {
     cam.fovy = 48.0f;
     cam.projection = CAMERA_PERSPECTIVE;
 
+    float camYaw = 0.0f;
     float curFov = 48.0f;
     float curCamDist = 2.15f;
     float curCamHeight = 1.44f;
+
+    int joyId = -1;
+    Vector2 joyOrigin = {0, 0};
+    int prevTouchIds[10] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+    int prevTouchCount = 0;
+    const float joyRadius = 88.0f;
 
     while (!WindowShouldClose()) {
         float dt = GetFrameTime();
@@ -58,48 +65,91 @@ int main() {
             {(float)sw - 135, (float)sh - 146, 118, 56}
         };
 
-        Vector2 joyCenter = {120, (float)sh - 120};
-        float joyRadius = 88.0f;
-        Vector2 joyInput = {0, 0};
+        int touchCount = GetTouchPointCount();
+        if (touchCount > 10) touchCount = 10;
+        int curIds[10];
+        for (int i = 0; i < touchCount; ++i) curIds[i] = GetTouchPointId(i);
 
-        if (IsKeyDown(KEY_W)) joyInput.y = -1;
-        if (IsKeyDown(KEY_S)) joyInput.y = 1;
-        if (IsKeyDown(KEY_A)) joyInput.x = -1;
-        if (IsKeyDown(KEY_D)) joyInput.x = 1;
-
-        ts.justTapped = false;
-        ts.isDragging = false;
-        for (int i = 0; i < GetTouchPointCount(); ++i) {
+        bool joyHeld = false;
+        Vector2 joyTouch = joyOrigin;
+        for (int i = 0; i < touchCount; ++i) {
+            int id = curIds[i];
             Vector2 tp = GetTouchPosition(i);
-            if (tp.x < sw / 2.0f && !IsPointInAnyUI(tp, uiRects, 6)) {
-                Vector2 d = {tp.x - joyCenter.x, tp.y - joyCenter.y};
-                float len = sqrtf(d.x*d.x + d.y*d.y);
-                if (len > 0) {
-                    joyInput = {d.x / len, d.y / len};
-                    if (len < joyRadius) joyInput = {joyInput.x * (len / joyRadius), joyInput.y * (len / joyRadius)};
-                }
-            } else if (!IsPointInAnyUI(tp, uiRects, 6)) {
-                if (!ts.isDragging) {
-                    ts.isDragging = true;
-                    ts.dragTouchId = i;
-                    ts.dragStart = tp;
-                    ts.dragCurrent = tp;
-                } else if (ts.dragTouchId == i) {
-                    ts.dragDelta = {tp.x - ts.dragCurrent.x, tp.y - ts.dragCurrent.y};
-                    ts.dragCurrent = tp;
-                }
+            if (tp.x >= sw / 2.0f || IsPointInAnyUI(tp, uiRects, 6)) continue;
+            if (joyId == -1) {
+                joyId = id;
+                joyOrigin = tp;
+            }
+            if (joyId == id) {
+                joyTouch = tp;
+                joyHeld = true;
             }
         }
+        if (!joyHeld) joyId = -1;
 
-        if (IsMouseButtonPressed(0)) {
-            ts.justTapped = true;
-            ts.tappedPos = GetMousePosition();
+        Vector2 joyInput = {0, 0};
+        if (joyHeld) {
+            Vector2 d = {joyTouch.x - joyOrigin.x, joyTouch.y - joyOrigin.y};
+            float len = sqrtf(d.x * d.x + d.y * d.y);
+            if (len > joyRadius) {
+                d.x *= joyRadius / len;
+                d.y *= joyRadius / len;
+            }
+            joyInput = {d.x / joyRadius, d.y / joyRadius};
         }
-        for (int i = 0; i < GetTouchPointCount(); ++i) {
-            if (GetTouchPointCount() > 0 && !ts.isDragging) {
+
+        if (IsKeyDown(KEY_W)) joyInput.y -= 1.0f;
+        if (IsKeyDown(KEY_S)) joyInput.y += 1.0f;
+        if (IsKeyDown(KEY_A)) joyInput.x -= 1.0f;
+        if (IsKeyDown(KEY_D)) joyInput.x += 1.0f;
+
+        float joyMag = sqrtf(joyInput.x * joyInput.x + joyInput.y * joyInput.y);
+        if (joyMag > 1.0f) {
+            joyInput.x /= joyMag;
+            joyInput.y /= joyMag;
+            joyMag = 1.0f;
+        }
+
+        ts.dragDelta = {0, 0};
+        bool dragFound = false;
+        for (int i = 0; i < touchCount; ++i) {
+            int id = curIds[i];
+            Vector2 tp = GetTouchPosition(i);
+            if (tp.x < sw / 2.0f || IsPointInAnyUI(tp, uiRects, 6)) continue;
+            if (!ts.isDragging) {
+                ts.isDragging = true;
+                ts.dragTouchId = id;
+                ts.dragStart = tp;
+                ts.dragCurrent = tp;
+                dragFound = true;
+            } else if (ts.dragTouchId == id) {
+                ts.dragDelta = {tp.x - ts.dragCurrent.x, tp.y - ts.dragCurrent.y};
+                ts.dragCurrent = tp;
+                dragFound = true;
+            }
+        }
+        if (!dragFound) {
+            ts.isDragging = false;
+            ts.dragTouchId = -1;
+        }
+
+        ts.justTapped = false;
+        for (int i = 0; i < touchCount; ++i) {
+            bool isNew = true;
+            for (int j = 0; j < prevTouchCount; ++j) {
+                if (prevTouchIds[j] == curIds[i]) {
+                    isNew = false;
+                    break;
+                }
+            }
+            if (isNew) {
                 ts.justTapped = true;
                 ts.tappedPos = GetTouchPosition(i);
             }
+        }
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            ts.justTapped = true;
+            ts.tappedPos = GetMousePosition();
         }
 
         if (IsButtonJustTapped(ts, uiRects[0]) || IsKeyPressed(KEY_V)) pl.camMode = (pl.camMode + 1) % 4;
@@ -107,27 +157,21 @@ int main() {
 
         bool wRun = IsKeyDown(KEY_LEFT_SHIFT);
         bool wCrouch = IsKeyDown(KEY_C);
-        bool wSlide = IsKeyDown(KEY_LEFT_CONTROL);
-        bool wJump = IsKeyDown(KEY_SPACE);
-
-        for (int i = 0; i < GetTouchPointCount(); ++i) {
+        bool wSlideTap = IsButtonJustTapped(ts, uiRects[4]) || IsKeyPressed(KEY_LEFT_CONTROL);
+        bool wJumpTap = IsButtonJustTapped(ts, uiRects[3]) || IsKeyPressed(KEY_SPACE);
+        for (int i = 0; i < touchCount; ++i) {
             Vector2 tp = GetTouchPosition(i);
             if (CheckCollisionPointRec(tp, uiRects[2])) wRun = true;
             if (CheckCollisionPointRec(tp, uiRects[5])) wCrouch = true;
-            if (CheckCollisionPointRec(tp, uiRects[4])) wSlide = true;
-            if (CheckCollisionPointRec(tp, uiRects[3])) wJump = true;
         }
-
-        float joyMag = sqrtf(joyInput.x*joyInput.x + joyInput.y*joyInput.y);
-        if (joyMag > 1.0f) joyInput = {joyInput.x / joyMag, joyInput.y / joyMag};
 
         float sens = pl.anim.focusMode ? 0.0032f : 0.0048f;
         if (ts.isDragging) {
-            pl.yaw -= ts.dragDelta.x * sens;
+            camYaw -= ts.dragDelta.x * sens;
             pl.pitch -= ts.dragDelta.y * sens;
         }
-        if (IsKeyDown(KEY_Q)) pl.yaw += 2.0f * dt;
-        if (IsKeyDown(KEY_E)) pl.yaw -= 2.0f * dt;
+        if (IsKeyDown(KEY_Q)) camYaw += 2.0f * dt;
+        if (IsKeyDown(KEY_E)) camYaw -= 2.0f * dt;
         pl.pitch = Clampf(pl.pitch, -0.30f, 0.85f);
 
         if (pl.slideTimer > 0.0f) {
@@ -137,14 +181,14 @@ int main() {
             pl.anim.velocity = VMul(pl.slideDir, slideSpeed);
             pl.anim.state = 4;
             if (pl.slideTimer <= 0.0f) wCrouch = true;
-        } else if (wJump && pl.pos.y <= 0.01f) {
+        } else if (wJumpTap && pl.pos.y <= 0.01f) {
             pl.anim.velocity.y = 6.5f;
             if (pl.anim.state == 2) pl.anim.velocity = VAdd(pl.anim.velocity, VMul(RotateYaw({0, 0, 1}, pl.yaw), 6.8f));
             pl.anim.state = 5;
         } else if (pl.pos.y > 0.01f) {
             pl.anim.velocity.y -= 16.0f * dt;
             pl.anim.state = 5;
-        } else if (wSlide && pl.anim.state == 2) {
+        } else if (wSlideTap && pl.anim.state == 2) {
             pl.slideTimer = 0.72f;
             pl.slideDir = RotateYaw({0, 0, 1}, pl.yaw);
             pl.anim.state = 4;
@@ -159,18 +203,18 @@ int main() {
             }
             pl.anim.moveSpeed = Lerpf(pl.anim.moveSpeed, targetSpeed, dt * 11.0f);
 
+            Vector3 moveDir = VAdd(VMul(RotateYaw({0, 0, 1}, camYaw), -joyInput.y),
+                                   VMul(RotateYaw({1, 0, 0}, camYaw), joyInput.x));
             if (joyMag > 0.1f) {
-                float targetYaw = pl.yaw + atan2f(-joyInput.x, -joyInput.y);
-                if (pl.anim.focusMode) {
-                    pl.anim.velocity = RotateYaw({joyInput.x, 0, joyInput.y}, pl.yaw);
-                    pl.anim.velocity = VMul(VNorm(pl.anim.velocity), pl.anim.moveSpeed);
-                } else {
-                    pl.yaw = targetYaw;
-                    pl.anim.velocity = VMul(RotateYaw({0, 0, 1}, pl.yaw), pl.anim.moveSpeed);
-                }
+                pl.anim.velocity = VMul(VNorm(moveDir), pl.anim.moveSpeed);
             } else {
                 pl.anim.velocity = {0, 0, 0};
             }
+
+            float desiredYaw = pl.yaw;
+            if (pl.anim.focusMode) desiredYaw = camYaw + (float)M_PI;
+            else if (joyMag > 0.1f) desiredYaw = atan2f(moveDir.x, moveDir.z);
+            pl.yaw += WrapAngle(desiredYaw - pl.yaw) * fminf(dt * 12.0f, 1.0f);
 
             if (wCrouch) pl.anim.state = 3;
             else if (pl.anim.moveSpeed > 4.5f) pl.anim.state = 2;
@@ -199,7 +243,7 @@ int main() {
 
         if (pl.camMode == 0) { camOffset.x = 0.34f; }
         else if (pl.camMode == 1) { camOffset.x = -0.34f; }
-        else if (pl.camMode == 2) { tDist = 1.45f; tFov = 42.0f; tHeight = 1.52f; camOffset.z = -1.0f; }
+        else if (pl.camMode == 2) { tDist = 1.45f; tFov = 42.0f; tHeight = 1.52f; }
         else if (pl.camMode == 3) { tDist = 2.85f; camOffset.x = 0; }
 
         curFov = Lerpf(curFov, tFov, dt * 10.0f);
@@ -207,11 +251,10 @@ int main() {
         curCamHeight = Lerpf(curCamHeight, tHeight, dt * 14.0f);
 
         cam.fovy = curFov;
-        cam.target = VAdd(pl.pos, {0, curCamHeight, 0});
-        Basis3D cb = MakeBasis(RotateYaw({0, 0, 1}, pl.yaw));
-        cam.target = VAdd(cam.target, VMul(cb.right, camOffset.x));
+        Basis3D cb = MakeBasis(RotateYaw({0, 0, 1}, camYaw));
+        cam.target = VAdd(VAdd(pl.pos, {0, curCamHeight, 0}), VMul(cb.right, camOffset.x));
 
-        float cy = pl.yaw + (pl.camMode == 2 ? M_PI : 0);
+        float cy = (pl.camMode == 2) ? pl.yaw : camYaw;
         Vector3 sph = { curCamDist * cosf(pl.pitch) * sinf(cy), curCamDist * sinf(pl.pitch), curCamDist * cosf(pl.pitch) * cosf(cy) };
         cam.position = VAdd(cam.target, sph);
 
@@ -235,18 +278,23 @@ int main() {
         DrawUIButton(uiRects[4], "SLIDE", pl.anim.state == 4, {200, 50, 50, 255});
         DrawUIButton(uiRects[5], "JONGKOK", pl.anim.state == 3, {200, 50, 50, 255});
 
-        DrawCircleV(joyCenter, joyRadius, {100, 100, 100, 100});
-        DrawCircleV(Vector2{ joyCenter.x + joyInput.x * joyRadius, joyCenter.y + joyInput.y * joyRadius }, 30.0f, Color{ 200, 200, 200, 200 });
+        if (joyHeld) {
+            DrawCircleV(joyOrigin, joyRadius, Color{100, 100, 100, 100});
+            DrawCircleV(Vector2{ joyOrigin.x + joyInput.x * joyRadius, joyOrigin.y + joyInput.y * joyRadius }, 30.0f, Color{200, 200, 200, 200});
+        }
 
         if (pl.anim.focusMode) {
-            DrawLine(sw/2 - 10, sh/2, sw/2 + 10, sh/2, WHITE);
-            DrawLine(sw/2, sh/2 - 10, sw/2, sh/2 + 10, WHITE);
+            DrawLine(sw / 2 - 10, sh / 2, sw / 2 + 10, sh / 2, WHITE);
+            DrawLine(sw / 2, sh / 2 - 10, sw / 2, sh / 2 + 10, WHITE);
         }
 
         DrawText("ZoneWars 3D", 20, 20, 30, WHITE);
         DrawFPS(20, sh - 40);
 
         EndDrawing();
+
+        prevTouchCount = touchCount;
+        for (int i = 0; i < touchCount; ++i) prevTouchIds[i] = curIds[i];
         EndMultiTouchFrame(ts);
     }
 
