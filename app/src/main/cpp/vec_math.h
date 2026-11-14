@@ -5,6 +5,7 @@
 inline Vector3 VAdd(Vector3 a, Vector3 b) { return { a.x + b.x, a.y + b.y, a.z + b.z }; }
 inline Vector3 VSub(Vector3 a, Vector3 b) { return { a.x - b.x, a.y - b.y, a.z - b.z }; }
 inline Vector3 VMul(Vector3 a, float s) { return { a.x * s, a.y * s, a.z * s }; }
+inline Vector2 VAdd2(Vector2 a, Vector2 b) { return { a.x + b.x, a.y + b.y }; }
 inline float Lerpf(float a, float b, float t) { return a + (b - a) * t; }
 inline float Clampf(float v, float min, float max) { return v < min ? min : (v > max ? max : v); }
 

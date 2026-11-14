@@ -1,5 +1,6 @@
 #include "raylib.h"
 #include "sausage.h"
+#include "map/arena-map1.h"
 
 int main() {
     SetConfigFlags(FLAG_MSAA_4X_HINT);
@@ -154,7 +155,7 @@ int main() {
         EndMode3D();
 
         DrawCircleV(joyCenter, joyRadius, {50, 50, 50, 100});
-        DrawCircleV(VAdd(joyCenter, {joyInput.x * joyRadius, joyInput.y * joyRadius}), 35, {200, 200, 200, 150});
+        DrawCircleV(VAdd2(joyCenter, {joyInput.x * joyRadius, joyInput.y * joyRadius}), 35, {200, 200, 200, 150});
 
         DrawUIButton(btnJump, "LOMPAT", pl.state == 4);
         DrawUIButton(btnCrouch, "JONGKOK", pl.state == 2);

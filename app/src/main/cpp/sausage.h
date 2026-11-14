@@ -1,5 +1,5 @@
 #pragma once
-#include "math.h"
+#include "vec_math.h"
 
 struct Player {
     Vector3 pos;
@@ -45,14 +45,6 @@ inline void DrawSausageMan(const Player& p) {
         DrawCube(e1, 0.12f, 0.12f, 0.12f, eye);
         DrawCube(e2, 0.12f, 0.12f, 0.12f, eye);
     }
-}
-
-inline void DrawPolygonWorld() {
-    DrawGrid(40, 4.0f);
-    DrawCube({0, -0.5f, 0}, 160.0f, 1.0f, 160.0f, {80, 160, 90, 255});
-    DrawCube({10, 2.0f, 10}, 4.0f, 4.0f, 4.0f, {180, 80, 80, 255});
-    DrawCube({-15, 1.0f, 20}, 8.0f, 2.0f, 6.0f, {80, 100, 180, 255});
-    DrawCube({20, 3.0f, -15}, 6.0f, 6.0f, 6.0f, {180, 150, 80, 255});
 }
 
 inline void DrawUIButton(Rectangle r, const char* text, bool active) {
