@@ -4,9 +4,6 @@
 #include "rlgl.h"
 #include "math_anim_helper.h"
 
-// =========================================================
-// 1. STUDIO LIGHTING CEPAT (TANPA POWF BERAT -> NAIK KE 60 FPS)
-// =========================================================
 inline Color ShadeStudio(Color base, Vector3 normal, float specStrength = 0.15f)
 {
     const Vector3 lightDir = V3(0.38f, 0.62f, 0.68f);
@@ -15,7 +12,6 @@ inline Color ShadeStudio(Color base, Vector3 normal, float specStrength = 0.15f)
     float ndl = VDot(normal, lightDir);
     float diff = Clamp01(ndl * 0.50f + 0.50f);
 
-    // Hitung pangkat 16 tanpa powf() -> 50x lebih cepat di CPU Android!
     float ndh = Clamp01(VDot(normal, halfVec));
     float s2 = ndh * ndh;
     float s4 = s2 * s2;
@@ -29,10 +25,6 @@ inline Color ShadeStudio(Color base, Vector3 normal, float specStrength = 0.15f)
     return Color{ (unsigned char)r, (unsigned char)g, (unsigned char)b, base.a };
 }
 
-// =========================================================
-// 2. LOFTED MESH DENGAN URUTAN SEGITIGA CCW YANG BENAR
-// (Memperbaiki masalah wajah/tubuh bolong & tembus pandang!)
-// =========================================================
 struct LoftSlice {
     Vector3 center;
     float rx;
@@ -40,6 +32,30 @@ struct LoftSlice {
     Color color;
     float spec;
 };
+
+inline Vector3 LoftNormal(const LoftSlice& s0, const LoftSlice& s1, float a)
+{
+    float ca = cosf(a);
+    float sa = sinf(a);
+    float rx = 0.5f * (s0.rx + s1.rx);
+    float rz = 0.5f * (s0.rz + s1.rz);
+    Vector3 tAngle = V3(-sa * rx, 0.0f, ca * rz);
+    Vector3 p0 = V3(s0.center.x + ca * s0.rx, s0.center.y, s0.center.z + sa * s0.rz);
+    Vector3 p1 = V3(s1.center.x + ca * s1.rx, s1.center.y, s1.center.z + sa * s1.rz);
+    Vector3 tVert = VSub(p1, p0);
+    Vector3 n = VCross(tAngle, tVert);
+    n = VMul(n, -1.0f);
+    float l = VLen(n);
+    return l > 1e-6f ? VMul(n, 1.0f / l) : V3(ca, 0.0f, sa);
+}
+
+inline Vector3 EllipsoidNormal(Vector3 ln, Vector3 radii)
+{
+    float rx = radii.x > 1e-6f ? radii.x : 1e-6f;
+    float ry = radii.y > 1e-6f ? radii.y : 1e-6f;
+    float rz = radii.z > 1e-6f ? radii.z : 1e-6f;
+    return VNorm(V3(ln.x / rx, ln.y / ry, ln.z / rz));
+}
 
 inline void DrawLoftedMesh(Vector3 rootPos, float rootYaw, const LoftSlice* slices, int sliceCount, int segs = 12)
 {
@@ -64,15 +80,14 @@ inline void DrawLoftedMesh(Vector3 rootPos, float rootYaw, const LoftSlice* slic
             Vector3 p10 = WorldPoint(rootPos, V3(s1.center.x + c0 * s1.rx, s1.center.y, s1.center.z + sn0 * s1.rz), rootYaw);
             Vector3 p11 = WorldPoint(rootPos, V3(s1.center.x + c1 * s1.rx, s1.center.y, s1.center.z + sn1 * s1.rz), rootYaw);
 
-            Vector3 n0 = RotateYaw(VNorm(V3(c0, 0.15f, sn0)), rootYaw);
-            Vector3 n1 = RotateYaw(VNorm(V3(c1, 0.15f, sn1)), rootYaw);
+            Vector3 n0 = RotateYaw(LoftNormal(s0, s1, a0), rootYaw);
+            Vector3 n1 = RotateYaw(LoftNormal(s0, s1, a1), rootYaw);
 
             Color col00 = ShadeStudio(s0.color, n0, s0.spec);
             Color col01 = ShadeStudio(s0.color, n1, s0.spec);
             Color col10 = ShadeStudio(s1.color, n0, s1.spec);
             Color col11 = ShadeStudio(s1.color, n1, s1.spec);
 
-            // Urutan Counter-Clockwise (CCW) menghadap keluar: p00 -> p01 -> p11 dan p00 -> p11 -> p10
             rlColor4ub(col00.r, col00.g, col00.b, col00.a); rlVertex3f(p00.x, p00.y, p00.z);
             rlColor4ub(col01.r, col01.g, col01.b, col01.a); rlVertex3f(p01.x, p01.y, p01.z);
             rlColor4ub(col11.r, col11.g, col11.b, col11.a); rlVertex3f(p11.x, p11.y, p11.z);
@@ -85,7 +100,6 @@ inline void DrawLoftedMesh(Vector3 rootPos, float rootYaw, const LoftSlice* slic
     rlEnd();
 }
 
-// Lofted Mesh khusus Kepala (Dengan Tutup Dagu & Ubun-Ubun + Urutan CCW Benar)
 inline void DrawBasisLoft(const Basis3D& B, const LoftSlice* slices, int sliceCount, int segs = 14)
 {
     if (sliceCount < 2) return;
@@ -109,15 +123,16 @@ inline void DrawBasisLoft(const Basis3D& B, const LoftSlice* slices, int sliceCo
             Vector3 p10 = BasisPoint(B, s1.center.x + c0 * s1.rx, s1.center.y, s1.center.z + sn0 * s1.rz);
             Vector3 p11 = BasisPoint(B, s1.center.x + c1 * s1.rx, s1.center.y, s1.center.z + sn1 * s1.rz);
 
-            Vector3 n0 = BasisDir(B, c0, 0.15f, sn0);
-            Vector3 n1 = BasisDir(B, c1, 0.15f, sn1);
+            Vector3 ln0 = LoftNormal(s0, s1, a0);
+            Vector3 ln1 = LoftNormal(s0, s1, a1);
+            Vector3 n0 = BasisDir(B, ln0.x, ln0.y, ln0.z);
+            Vector3 n1 = BasisDir(B, ln1.x, ln1.y, ln1.z);
 
             Color col00 = ShadeStudio(s0.color, n0, s0.spec);
             Color col01 = ShadeStudio(s0.color, n1, s0.spec);
             Color col10 = ShadeStudio(s1.color, n0, s1.spec);
             Color col11 = ShadeStudio(s1.color, n1, s1.spec);
 
-            // CCW menghadap luar
             rlColor4ub(col00.r, col00.g, col00.b, col00.a); rlVertex3f(p00.x, p00.y, p00.z);
             rlColor4ub(col01.r, col01.g, col01.b, col01.a); rlVertex3f(p01.x, p01.y, p01.z);
             rlColor4ub(col11.r, col11.g, col11.b, col11.a); rlVertex3f(p11.x, p11.y, p11.z);
@@ -130,7 +145,6 @@ inline void DrawBasisLoft(const Basis3D& B, const LoftSlice* slices, int sliceCo
     rlEnd();
 }
 
-// Menggambar Anggota Tubuh (Paha, Betis, Lengan) Berpencahayaan Halus
 inline void DrawLitLimb(Vector3 rootPos, float rootYaw, Vector3 a, Vector3 b,
                         float rA, float rB, Color colA, Color colB, float spec = 0.2f, int segs = 10)
 {
@@ -176,7 +190,6 @@ inline void DrawLitLimb(Vector3 rootPos, float rootYaw, Vector3 a, Vector3 b,
     rlEnd();
 }
 
-// Bola 3D Elipsoid dengan Urutan Segitiga CCW yang Benar
 inline void DrawLitEllipsoid(const Basis3D& B, Vector3 localCenter, Vector3 radii, Color baseCol, float spec = 0.2f, int rings = 7, int slices = 10)
 {
     const float pi = 3.14159265f;
@@ -206,10 +219,15 @@ inline void DrawLitEllipsoid(const Basis3D& B, Vector3 localCenter, Vector3 radi
             Vector3 p10 = BasisPoint(B, localCenter.x + ln10.x * radii.x, localCenter.y + ln10.y * radii.y, localCenter.z + ln10.z * radii.z);
             Vector3 p11 = BasisPoint(B, localCenter.x + ln11.x * radii.x, localCenter.y + ln11.y * radii.y, localCenter.z + ln11.z * radii.z);
 
-            Color c00 = ShadeStudio(baseCol, BasisDir(B, ln00.x, ln00.y, ln00.z), spec);
-            Color c01 = ShadeStudio(baseCol, BasisDir(B, ln01.x, ln01.y, ln01.z), spec);
-            Color c10 = ShadeStudio(baseCol, BasisDir(B, ln10.x, ln10.y, ln10.z), spec);
-            Color c11 = ShadeStudio(baseCol, BasisDir(B, ln11.x, ln11.y, ln11.z), spec);
+            Vector3 en00 = EllipsoidNormal(ln00, radii);
+            Vector3 en01 = EllipsoidNormal(ln01, radii);
+            Vector3 en10 = EllipsoidNormal(ln10, radii);
+            Vector3 en11 = EllipsoidNormal(ln11, radii);
+
+            Color c00 = ShadeStudio(baseCol, BasisDir(B, en00.x, en00.y, en00.z), spec);
+            Color c01 = ShadeStudio(baseCol, BasisDir(B, en01.x, en01.y, en01.z), spec);
+            Color c10 = ShadeStudio(baseCol, BasisDir(B, en10.x, en10.y, en10.z), spec);
+            Color c11 = ShadeStudio(baseCol, BasisDir(B, en11.x, en11.y, en11.z), spec);
 
             rlColor4ub(c00.r, c00.g, c00.b, c00.a); rlVertex3f(p00.x, p00.y, p00.z);
             rlColor4ub(c01.r, c01.g, c01.b, c01.a); rlVertex3f(p01.x, p01.y, p01.z);
@@ -223,20 +241,14 @@ inline void DrawLitEllipsoid(const Basis3D& B, Vector3 localCenter, Vector3 radi
     rlEnd();
 }
 
-// Pipa 3D Cepat Tanpa DrawCapsule Berat (Hemat ratusan panggilan fungsi)
 inline void DrawBasisTube(const Basis3D& B, Vector3 a, Vector3 b, float r, Color col, float spec = 0.4f)
 {
     Vector3 wa = BasisPoint(B, a.x, a.y, a.z);
     Vector3 wb = BasisPoint(B, b.x, b.y, b.z);
     Color lit = ShadeStudio(col, B.forward, spec);
-    DrawCylinderEx(wa, wb, r, r, 6, lit);
+    DrawCylinderEx(wa, wb, r, r, 12, lit);
 }
 
-// =========================================================
-// 3. BAYANGAN LANTAI DATAR (ANTI-BLING & ANTI-BOLA HITAM)
-// Digambar dalam 1 batch RL_TRIANGLES di Y = 0.015f dengan warna
-// lantai gelap solid sehingga sambungan sendi tidak menumpuk gelap.
-// =========================================================
 inline Vector3 ProjectFloorShadow(Vector3 worldPt)
 {
     float h = fmaxf(0.0f, worldPt.y);
@@ -270,7 +282,6 @@ inline void DrawFlatShadowRibbon(Vector3 pos, float yaw, Vector3 a, Vector3 b, f
 
 inline void DrawFemaleShadow(const FemalePose& P, Vector3 pos, float yaw)
 {
-    // Warna bayangan solid senada lantai gelap -> tidak ada lagi tumpukan bulat-bulat di sendi!
     Color shadowCol = Color{ 28, 32, 40, 255 };
 
     rlDisableBackfaceCulling();
