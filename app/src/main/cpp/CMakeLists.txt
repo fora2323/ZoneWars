@@ -15,6 +15,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/raysan5/raylib.git
     GIT_TAG 5.0
     GIT_SHALLOW TRUE
+    PATCH_COMMAND sed -i s/ALooper_pollAll/ALooper_pollOnce/g src/platforms/rcore_android.c
 )
 FetchContent_MakeAvailable(raylib)
 
