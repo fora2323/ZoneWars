@@ -36,7 +36,7 @@ inline float WrapAngle(float a)
     return a - twoPi * roundf(a / twoPi);
 }
 
-// Orientasi 3D lokal (Right, Up, Forward) agar wajah & tubuh bisa miring/menoleh presisi
+// Orientasi 3D lokal (Right = +X, Up = +Y, Forward = +Z menghadap depan karakter)
 struct Basis3D {
     Vector3 pos;
     Vector3 right;
@@ -50,10 +50,15 @@ inline Basis3D MakeBasis(Vector3 pos, float yaw, float pitch, float roll)
     float cp = cosf(pitch), sp = sinf(pitch);
     float cr = cosf(roll), sr = sinf(roll);
 
-    Vector3 fwd = V3(sy * cp, -sp, cy * cp);
-    Vector3 rgt = V3(cy * cr + sy * sp * sr, cp * sr, -sy * cr + cy * sp * sr);
-    Vector3 up  = VCross(fwd, rgt);
-    return Basis3D{ pos, VNorm(rgt), VNorm(up), VNorm(fwd) };
+    Vector3 fwd = VNorm(V3(sy * cp, -sp, cy * cp));
+    Vector3 worldUp = V3(0.0f, 1.0f, 0.0f);
+    Vector3 rgt = VNorm(VCross(worldUp, fwd)); // Sistem koordinat konsisten: Right (+X) di kiri-kanan wajah
+    Vector3 up  = VNorm(VCross(fwd, rgt));
+
+    // Terapkan kemiringan kepala (roll)
+    Vector3 rgtRoll = VAdd(VMul(rgt, cr), VMul(up, sr));
+    Vector3 upRoll  = VAdd(VMul(up, cr), VMul(rgt, -sr));
+    return Basis3D{ pos, rgtRoll, upRoll, fwd };
 }
 
 inline Vector3 BasisPoint(const Basis3D& b, float x, float y, float z)
@@ -122,7 +127,6 @@ inline bool WasTouchIdDown(const MultiTouchState& mt, int id)
     return false;
 }
 
-// Mendeteksi ketukan jari baru pada tombol walaupun jempol kiri sedang menahan analog lari
 inline bool IsButtonJustTapped(const MultiTouchState& mt, Rectangle rect)
 {
     int count = GetTouchPointCount();
@@ -133,7 +137,7 @@ inline bool IsButtonJustTapped(const MultiTouchState& mt, Rectangle rect)
             return true;
         }
     }
-    if ( count == 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), rect)) {
+    if (count == 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), rect)) {
         return true;
     }
     return false;
@@ -238,10 +242,10 @@ inline void UpdateAnim(AnimState& A, float dt, float speedNorm, bool moving,
     A.time += dt;
 
     float targetMove = (moving && grounded && !sliding) ? 1.0f : 0.0f;
-    A.moveBlend = Lerpf(A.moveBlend, targetMove, fminf(dt * 9.0f, 1.0f));
+    A.moveBlend = Lerpf(A.moveBlend, targetMove, fminf(dt * 10.0f, 1.0f));
 
     float targetRun = (sprinting && moving && !crouching && !sliding) ? 1.0f : 0.0f;
-    A.runBlend = Lerpf(A.runBlend, targetRun, fminf(dt * 8.5f, 1.0f));
+    A.runBlend = Lerpf(A.runBlend, targetRun, fminf(dt * 9.0f, 1.0f));
 
     float targetCrouch = (crouching && !sliding && grounded) ? 1.0f : 0.0f;
     A.crouchBlend = Lerpf(A.crouchBlend, targetCrouch, fminf(dt * 10.0f, 1.0f));
@@ -257,34 +261,31 @@ inline void UpdateAnim(AnimState& A, float dt, float speedNorm, bool moving,
         A.landSquash = Lerpf(A.landSquash, 0.0f, fminf(dt * 10.0f, 1.0f));
     }
 
-    // Frekuensi langkah kaki yang halus dan responsif
-    float freq = 3.4f + 6.2f * speedNorm + 4.2f * A.runBlend - 1.6f * A.crouchBlend;
+    float freq = 3.5f + 5.8f * speedNorm + 3.8f * A.runBlend - 1.5f * A.crouchBlend;
     if (grounded && !sliding && moving) {
         A.phase += dt * freq;
         if (A.phase > twoPi) A.phase -= twoPi;
     }
 
-    A.breath = sinf(A.time * (2.2f + A.runBlend * 2.8f)) * (0.008f + 0.006f * A.runBlend);
+    A.breath = sinf(A.time * (2.2f + A.runBlend * 2.5f)) * (0.007f + 0.005f * A.runBlend);
 
-    // Fisika Pegas Rambut & Rantai Kacamata
-    float windX = Clampf(-yawRate * 0.045f, -0.16f, 0.16f) + cosf(A.phase) * 0.025f * A.moveBlend;
-    float windY = Clampf(-velY * 0.035f, -0.10f, 0.18f) + fabsf(sinf(A.phase * 2.0f)) * (0.03f + 0.04f * A.runBlend) * A.moveBlend;
-    float windZ = -(0.05f * speedNorm + 0.16f * A.runBlend + 0.28f * A.slideBlend + 0.08f * A.airBlend);
+    // Fisika Pegas Rambut & Rantai Kacamata (Dibatasi agar tidak pernah menembus badan)
+    float windX = Clampf(-yawRate * 0.035f, -0.10f, 0.10f) + cosf(A.phase) * 0.02f * A.moveBlend;
+    float windY = Clampf(-velY * 0.025f, -0.06f, 0.12f) + fabsf(sinf(A.phase * 2.0f)) * (0.025f + 0.03f * A.runBlend) * A.moveBlend;
+    float windZ = -(0.04f * speedNorm + 0.12f * A.runBlend + 0.20f * A.slideBlend + 0.06f * A.airBlend);
 
     Vector3 targetHair = V3(windX, windY, windZ);
-    Vector3 hForce = VMul(VSub(targetHair, A.hairSpring), 90.0f);
+    Vector3 hForce = VMul(VSub(targetHair, A.hairSpring), 85.0f);
     A.hairVel = VAdd(A.hairVel, VMul(hForce, dt));
-    A.hairVel = VMul(A.hairVel, fmaxf(0.0f, 1.0f - dt * 9.0f));
+    A.hairVel = VMul(A.hairVel, fmaxf(0.0f, 1.0f - dt * 9.5f));
     A.hairSpring = VAdd(A.hairSpring, VMul(A.hairVel, dt));
 
-    // Fisika Sekunder Tubuh
-    float targetChest = -sinf(A.phase * 2.0f) * (0.010f + 0.016f * A.runBlend) * A.moveBlend
-                        - A.landSquash * 0.025f + Clampf(-velY * 0.004f, -0.02f, 0.02f);
+    float targetChest = -sinf(A.phase * 2.0f) * (0.008f + 0.012f * A.runBlend) * A.moveBlend
+                        - A.landSquash * 0.02f;
     float cForce = (targetChest - A.chestSpring) * 130.0f;
-    A.chestVel = (A.chestVel + cForce * dt) * fmaxf(0.0f, 1.0f - dt * 11.0f);
+    A.chestVel = (A.chestVel + cForce * dt) * fmaxf(0.0f, 1.0f - dt * 12.0f);
     A.chestSpring += A.chestVel * dt;
 
-    // Kedipan Mata
     if (A.blinkT >= 0.0f) {
         A.blinkT += dt;
         if (A.blinkT >= 0.15f) {
@@ -308,106 +309,100 @@ inline void ComputeFemalePose(FemalePose& P, const AnimState& A)
     float sl = A.slideBlend;
     float air = A.airBlend;
 
-    // Idle bernapas & tumpuan pinggul natural (Contraposto)
-    float idleSwayX = sinf(A.time * 1.3f) * 0.010f * (1.0f - mv);
-    float walkSwayX = cosf(A.phase) * (0.032f - 0.008f * rn) * mv;
+    float idleSwayX = sinf(A.time * 1.4f) * 0.008f * (1.0f - mv);
+    float walkSwayX = cosf(A.phase) * (0.028f - 0.006f * rn) * mv;
     P.hipSwayX = (idleSwayX + walkSwayX) * (1.0f - sl) * (1.0f - air);
-    P.hipTilt  = sinf(A.phase) * (0.055f + 0.02f * rn) * mv * (1.0f - sl);
+    P.hipTilt  = sinf(A.phase) * (0.045f + 0.015f * rn) * mv * (1.0f - sl);
 
-    // Tinggi Pinggul (Berdiri: 0.96m, Jongkok: 0.64m, Slide: 0.34m)
-    float vertBob = -fabsf(cosf(A.phase)) * (0.026f + 0.038f * rn) * mv;
-    float hipY = 0.96f - 0.30f * cr - 0.60f * sl - 0.13f * A.landSquash + vertBob;
-    float hipZ = -0.06f * cr - 0.12f * sl;
+    // Tinggi Pinggul Proporsional (Berdiri, Jongkok, Slide)
+    float vertBob = -fabsf(cosf(A.phase)) * (0.022f + 0.032f * rn) * mv;
+    float hipY = 0.96f - 0.28f * cr - 0.56f * sl - 0.12f * A.landSquash + vertBob;
+    float hipZ = -0.05f * cr - 0.10f * sl;
 
-    P.torsoLean  = 0.04f * mv + 0.18f * rn + 0.22f * cr - 0.38f * sl + 0.08f * air;
-    P.spineTwist = -s * (0.12f + 0.14f * rn) * mv * (1.0f - sl);
+    // Condong badan yang wajar agar punggung tidak patah saat slide/lari
+    P.torsoLean  = 0.03f * mv + 0.14f * rn + 0.16f * cr - 0.26f * sl + 0.05f * air;
+    P.spineTwist = -s * (0.10f + 0.12f * rn) * mv * (1.0f - sl);
 
-    P.pelvis = V3(P.hipSwayX, hipY, hipZ);
-    P.waist  = V3(P.hipSwayX * 0.55f, hipY + 0.17f - 0.03f * cr - 0.06f * sl, hipZ + P.torsoLean * 0.38f);
-    P.chest  = V3(P.hipSwayX * 0.20f, hipY + 0.38f - 0.06f * cr - 0.12f * sl + A.breath, hipZ + P.torsoLean * 0.85f);
-    P.neckBase = V3(0.0f, P.chest.y + 0.14f, P.chest.z + P.torsoLean * 0.18f);
-    P.headCenter = V3(0.0f, P.neckBase.y + 0.15f, P.neckBase.z + 0.015f);
+    P.pelvis     = V3(P.hipSwayX, hipY, hipZ);
+    P.waist      = V3(P.hipSwayX * 0.5f, hipY + 0.17f - 0.02f * cr - 0.04f * sl, hipZ + P.torsoLean * 0.35f);
+    P.chest      = V3(P.hipSwayX * 0.2f, hipY + 0.38f - 0.05f * cr - 0.09f * sl + A.breath, hipZ + P.torsoLean * 0.75f);
+    P.neckBase   = V3(0.0f, P.chest.y + 0.13f, P.chest.z + P.torsoLean * 0.15f);
+    P.headCenter = V3(0.0f, P.neckBase.y + 0.15f, P.neckBase.z + 0.01f);
 
-    P.headPitch  = -P.torsoLean * 0.45f + sinf(A.time * 1.5f) * 0.02f;
-    P.headYawOff = -P.spineTwist * 0.45f;
-    P.headRoll   = -P.hipSwayX * 0.65f;
+    P.headPitch  = -P.torsoLean * 0.35f;
+    P.headYawOff = -P.spineTwist * 0.40f;
+    P.headRoll   = -P.hipSwayX * 0.50f;
     P.bustBounce = A.chestSpring;
 
-    // Bahu & Sendi Pinggul
-    const float shWidth = 0.165f;
-    const float hipWidth = 0.118f;
+    const float shWidth  = 0.160f;
+    const float hipWidth = 0.105f;
     float shTwistZ = sinf(P.spineTwist) * shWidth;
-    P.lShoulder = V3(P.chest.x - shWidth, P.chest.y + 0.065f, P.chest.z + shTwistZ);
-    P.rShoulder = V3(P.chest.x + shWidth, P.chest.y + 0.065f, P.chest.z - shTwistZ);
+    P.lShoulder = V3(P.chest.x - shWidth, P.chest.y + 0.06f, P.chest.z + shTwistZ);
+    P.rShoulder = V3(P.chest.x + shWidth, P.chest.y + 0.06f, P.chest.z - shTwistZ);
 
     float hipTwistZ = -shTwistZ * 0.45f;
-    P.lHip = V3(P.pelvis.x - hipWidth, hipY - P.hipTilt * 0.25f, hipZ + hipTwistZ);
-    P.rHip = V3(P.pelvis.x + hipWidth, hipY + P.hipTilt * 0.25f, hipZ - hipTwistZ);
+    P.lHip = V3(P.pelvis.x - hipWidth, hipY - P.hipTilt * 0.2f, hipZ + hipTwistZ);
+    P.rHip = V3(P.pelvis.x + hipWidth, hipY + P.hipTilt * 0.2f, hipZ - hipTwistZ);
 
-    // --- GERAKAN KAKI FEMININ (Jalan, Lari Cepat, Jongkok, Lompat Lari, Slide) ---
-    float strideZ = (0.31f + 0.27f * rn - 0.12f * cr) * mv;
+    // --- GERAKAN KAKI ---
+    float strideZ = (0.29f + 0.24f * rn - 0.10f * cr) * mv;
     float lPhaseLift = fmaxf(0.0f, c);
     float rPhaseLift = fmaxf(0.0f, -c);
-    float liftHeight = (0.11f + 0.17f * rn) * mv;
+    float liftHeight = (0.10f + 0.15f * rn) * mv;
 
-    // Saat berjalan/lari, telapak kaki wanita menapak sedikit lebih rapat ke garis tengah (catwalk alignment)
-    float footStanceX = Lerpf(0.095f, 0.065f, mv);
+    float footStanceX = Lerpf(0.092f, 0.068f, mv);
     Vector3 lAnkleGround = V3(-footStanceX, 0.085f + lPhaseLift * liftHeight,
-                              s * strideZ - (lPhaseLift > 0.0f ? 0.07f * rn : 0.0f));
+                              s * strideZ - (lPhaseLift > 0.0f ? 0.06f * rn : 0.0f));
     Vector3 rAnkleGround = V3( footStanceX, 0.085f + rPhaseLift * liftHeight,
-                             -s * strideZ - (rPhaseLift > 0.0f ? 0.07f * rn : 0.0f));
+                             -s * strideZ - (rPhaseLift > 0.0f ? 0.06f * rn : 0.0f));
 
-    // Pose Lompat Dinamis (Satu lutut terangkat atletis, satu kaki di belakang)
     float jUp = Clamp01(A.jumpVelRatio * 0.5f + 0.5f);
-    Vector3 lAnkleAir = V3(-0.085f, 0.28f + 0.10f * jUp,  0.16f + 0.10f * rn);
-    Vector3 rAnkleAir = V3( 0.085f, 0.16f + 0.06f * jUp, -0.22f - 0.08f * rn);
+    Vector3 lAnkleAir = V3(-0.085f, 0.26f + 0.08f * jUp,  0.14f + 0.08f * rn);
+    Vector3 rAnkleAir = V3( 0.085f, 0.15f + 0.05f * jUp, -0.18f - 0.06f * rn);
 
-    // Pose Tactical Slide (Kaki kiri meluncur lurus di depan, kaki kanan ditekuk rapat di bawah)
-    Vector3 lAnkleSlide = V3(-0.06f, 0.09f,  0.72f);
-    Vector3 rAnkleSlide = V3( 0.16f, 0.12f, -0.16f);
+    Vector3 lAnkleSlide = V3(-0.065f, 0.09f,  0.64f);
+    Vector3 rAnkleSlide = V3( 0.140f, 0.12f, -0.14f);
 
     Vector3 lAnkleT = VLerp(VLerp(lAnkleGround, lAnkleAir, air), lAnkleSlide, sl);
     Vector3 rAnkleT = VLerp(VLerp(rAnkleGround, rAnkleAir, air), rAnkleSlide, sl);
 
     P.lKnee = SolveTwoBoneIK(P.lHip, lAnkleT, 0.43f, 0.42f, V3(-0.02f, 0.10f, 1.0f));
-    P.rKnee = SolveTwoBoneIK(P.rHip, rAnkleT, 0.43f, 0.42f, V3( 0.05f + 0.45f * sl, 0.10f, 1.0f));
+    P.rKnee = SolveTwoBoneIK(P.rHip, rAnkleT, 0.43f, 0.42f, V3( 0.04f + 0.35f * sl, 0.10f, 1.0f));
     P.lAnkle = lAnkleT;
     P.rAnkle = rAnkleT;
 
-    float lToePitch = (s < 0.0f && mv > 0.1f) ? -0.025f : 0.0f;
-    float rToePitch = (-s < 0.0f && mv > 0.1f) ? -0.025f : 0.0f;
-    P.lToe = VAdd(P.lAnkle, V3(0.0f, -0.055f + lToePitch, 0.135f));
-    P.rToe = VAdd(P.rAnkle, V3(0.0f, -0.055f + rToePitch, 0.135f));
+    P.lToe = VAdd(P.lAnkle, V3(0.0f, -0.055f, 0.13f));
+    P.rToe = VAdd(P.rAnkle, V3(0.0f, -0.055f, 0.13f));
 
-    // --- GERAKAN LENGAN & TANGAN ANGGUN ---
-    float armSwing = (0.20f + 0.26f * rn) * mv;
-    float elbowBendY = 0.05f + 0.16f * rn + 0.10f * cr;
-    float wristBaseY = P.chest.y - 0.33f + elbowBendY + fabsf(s) * 0.035f * mv;
+    // --- GERAKAN TANGAN ---
+    float armSwing = (0.18f + 0.24f * rn) * mv;
+    float elbowBendY = 0.04f + 0.15f * rn + 0.08f * cr;
+    float wristBaseY = P.chest.y - 0.32f + elbowBendY + fabsf(s) * 0.03f * mv;
 
-    Vector3 lWristGround = V3(-(shWidth + 0.045f - 0.03f * rn), wristBaseY,
-                              P.chest.z + 0.05f + 0.12f * rn - s * armSwing);
-    Vector3 rWristGround = V3( (shWidth + 0.045f - 0.03f * rn), wristBaseY,
-                              P.chest.z + 0.05f + 0.12f * rn + s * armSwing);
+    Vector3 lWristGround = V3(-(shWidth + 0.045f - 0.025f * rn), wristBaseY,
+                              P.chest.z + 0.04f + 0.10f * rn - s * armSwing);
+    Vector3 rWristGround = V3( (shWidth + 0.045f - 0.025f * rn), wristBaseY,
+                              P.chest.z + 0.04f + 0.10f * rn + s * armSwing);
 
-    Vector3 lWristAir = V3(-(shWidth + 0.14f), P.chest.y + 0.04f, P.chest.z - 0.08f);
-    Vector3 rWristAir = V3( (shWidth + 0.14f), P.chest.y + 0.10f, P.chest.z + 0.10f);
+    Vector3 lWristAir = V3(-(shWidth + 0.12f), P.chest.y + 0.02f, P.chest.z - 0.06f);
+    Vector3 rWristAir = V3( (shWidth + 0.12f), P.chest.y + 0.08f, P.chest.z + 0.08f);
 
-    Vector3 lWristSlide = V3(-(shWidth + 0.18f), hipY - 0.18f, -0.18f);
-    Vector3 rWristSlide = V3( (shWidth + 0.10f), hipY + 0.10f,  0.26f);
+    Vector3 lWristSlide = V3(-(shWidth + 0.15f), hipY - 0.14f, -0.14f);
+    Vector3 rWristSlide = V3( (shWidth + 0.09f), hipY + 0.08f,  0.22f);
 
     Vector3 lWristT = VLerp(VLerp(lWristGround, lWristAir, air), lWristSlide, sl);
     Vector3 rWristT = VLerp(VLerp(rWristGround, rWristAir, air), rWristSlide, sl);
 
-    P.lElbow = SolveTwoBoneIK(P.lShoulder, lWristT, 0.26f, 0.24f, V3(-0.30f, -0.25f, -1.0f));
-    P.rElbow = SolveTwoBoneIK(P.rShoulder, rWristT, 0.26f, 0.24f, V3( 0.30f, -0.25f, -1.0f));
+    P.lElbow = SolveTwoBoneIK(P.lShoulder, lWristT, 0.25f, 0.23f, V3(-0.28f, -0.25f, -1.0f));
+    P.rElbow = SolveTwoBoneIK(P.rShoulder, rWristT, 0.25f, 0.23f, V3( 0.28f, -0.25f, -1.0f));
     P.lWrist = lWristT;
     P.rWrist = rWristT;
 
     Vector3 lArmDir = VNorm(VSub(P.lWrist, P.lElbow));
     Vector3 rArmDir = VNorm(VSub(P.rWrist, P.rElbow));
-    P.lHand = VAdd(P.lWrist, VMul(lArmDir, 0.065f));
-    P.rHand = VAdd(P.rWrist, VMul(rArmDir, 0.065f));
+    P.lHand = VAdd(P.lWrist, VMul(lArmDir, 0.06f));
+    P.rHand = VAdd(P.rWrist, VMul(rArmDir, 0.06f));
 
     P.hairFlow  = A.hairSpring;
-    P.chainFlow = VMul(A.hairSpring, 0.72f);
+    P.chainFlow = VMul(A.hairSpring, 0.65f);
 }

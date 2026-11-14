@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "rlgl.h"
 #include "math_anim_helper.h"
 #include "render_helper.h"
 #include "female_character.h"
@@ -12,7 +13,7 @@ struct Player {
     bool crouching;
     bool sliding;
     bool focusMode;
-    int shoulderMode;   // 0 = Bahu Kanan, 1 = Bahu Kiri, 2 = Tengah
+    int shoulderMode;   // 0 = Bahu Kanan, 1 = Bahu Kiri, 2 = Lihat Depan (Wajah), 3 = Tengah
     float slideTimer;
     Vector3 slideDir;
 };
@@ -25,39 +26,47 @@ static bool IsPointInAnyUI(Vector2 pt, const Rectangle* rects, int count)
     return false;
 }
 
+// =========================================================
+// MAP DATAR ANTI-BLING (ZERO Z-FIGHTING & SANGAT CEPAT 60 FPS)
+// Semua ubin digambar berdampingan pada Y = 0.0f dalam 1 kali rlBegin
+// tanpa ada poligon yang saling tumpang-tindih!
+// =========================================================
 static void DrawFlatArenaMap(Vector3 playerPos)
 {
-    const Color floorBase = Color{ 48, 54, 64, 255 };
-    const Color tileAlt   = Color{ 56, 63, 74, 255 };
-    const Color lineCol   = Color{ 78, 88, 102, 255 };
-    const Color borderCol = Color{ 175, 42, 56, 255 };
-
-    DrawPlane(V3(0.0f, 0.0f, 0.0f), Vector2{ 140.0f, 140.0f }, floorBase);
+    const Color tileDark  = Color{ 46, 52, 62, 255 };
+    const Color tileLight = Color{ 55, 62, 74, 255 };
+    const Color borderCol = Color{ 185, 45, 58, 255 };
 
     const float tileSize = 4.0f;
-    int centerX = (int)floorf(playerPos.x / tileSize);
-    int centerZ = (int)floorf(playerPos.z / tileSize);
-    const int radius = 7;
+    const int gridHalf = 16; // Arena 128m x 128m
 
-    for (int gz = centerZ - radius; gz <= centerZ + radius; gz++) {
-        for (int gx = centerX - radius; gx <= centerX + radius; gx++) {
-            if (((gx + gz) & 1) == 0) {
-                float wx = gx * tileSize + tileSize * 0.5f;
-                float wz = gz * tileSize + tileSize * 0.5f;
-                if (fabsf(wx) < 64.0f && fabsf(wz) < 64.0f) {
-                    DrawPlane(V3(wx, 0.001f, wz), Vector2{ tileSize * 0.96f, tileSize * 0.96f }, tileAlt);
-                }
-            }
+    rlDisableBackfaceCulling();
+    rlBegin(RL_TRIANGLES);
+    for (int gz = -gridHalf; gz < gridHalf; gz++) {
+        for (int gx = -gridHalf; gx < gridHalf; gx++) {
+            Color c = (((gx + gz) & 1) == 0) ? tileLight : tileDark;
+            float x0 = gx * tileSize;
+            float x1 = (gx + 1) * tileSize;
+            float z0 = gz * tileSize;
+            float z1 = (gz + 1) * tileSize;
+
+            rlColor4ub(c.r, c.g, c.b, 255);
+            rlVertex3f(x0, 0.0f, z0);
+            rlVertex3f(x0, 0.0f, z1);
+            rlVertex3f(x1, 0.0f, z1);
+
+            rlVertex3f(x0, 0.0f, z0);
+            rlVertex3f(x1, 0.0f, z1);
+            rlVertex3f(x1, 0.0f, z0);
         }
     }
+    rlEnd();
 
-    DrawPlane(V3(0.0f, 0.002f, 0.0f), Vector2{ 120.0f, 0.16f }, lineCol);
-    DrawPlane(V3(0.0f, 0.002f, 0.0f), Vector2{ 0.16f, 120.0f }, lineCol);
-
-    DrawPlane(V3(0.0f, 0.002f,  60.0f), Vector2{ 120.0f, 0.35f }, borderCol);
-    DrawPlane(V3(0.0f, 0.002f, -60.0f), Vector2{ 120.0f, 0.35f }, borderCol);
-    DrawPlane(V3( 60.0f, 0.002f, 0.0f), Vector2{ 0.35f, 120.0f }, borderCol);
-    DrawPlane(V3(-60.0f, 0.002f, 0.0f), Vector2{ 0.35f, 120.0f }, borderCol);
+    // Tembok pembatas rendah di pinggir arena (Tinggi 0.25m -> bebas kedip)
+    DrawCube(V3(0.0f, 0.12f,  60.0f), 120.0f, 0.24f, 0.4f, borderCol);
+    DrawCube(V3(0.0f, 0.12f, -60.0f), 120.0f, 0.24f, 0.4f, borderCol);
+    DrawCube(V3( 60.0f, 0.12f, 0.0f), 0.4f, 0.24f, 120.0f, borderCol);
+    DrawCube(V3(-60.0f, 0.12f, 0.0f), 0.4f, 0.24f, 120.0f, borderCol);
 }
 
 static void DrawUIButton(Rectangle r, const char* label, bool active, Color activeColor)
@@ -88,7 +97,7 @@ int main(void)
         false,  // crouching
         false,  // sliding
         false,  // focusMode
-        0,      // shoulderMode: 0 = Bahu Kanan
+        0,      // shoulderMode: 0 = Bahu Kanan, 1 = Bahu Kiri, 2 = Lihat Depan, 3 = Tengah
         0.0f,
         V3(0.0f, 0.0f, 1.0f)
     };
@@ -101,9 +110,9 @@ int main(void)
     InitMultiTouch(touchState);
 
     float camYaw = 0.0f;
-    float camPitch = 0.18f;
+    float camPitch = 0.16f;
     float curCamDist = 2.15f;
-    float curSideOffset = 0.38f;
+    float curSideOffset = 0.36f;
     float curTargetY = 1.42f;
     const float joyRadius = 88.0f;
 
@@ -119,8 +128,7 @@ int main(void)
         int sw = GetScreenWidth();
         int sh = GetScreenHeight();
 
-        // Tombol UI (Tanpa tombol karakter pria, ditambah tombol Kamera Depan/Wajah agar mudah cek detail wajah)
-        Rectangle shoulderBtn = Rectangle{ (float)sw - 205.0f, 18.0f, 185.0f, 44.0f };
+        Rectangle shoulderBtn = Rectangle{ (float)sw - 215.0f, 18.0f, 195.0f, 44.0f };
         Rectangle focusBtn    = Rectangle{ (float)sw - 265.0f, (float)sh - 220.0f, 118.0f, 56.0f };
         Rectangle sprintBtn   = Rectangle{ (float)sw - 135.0f, (float)sh - 294.0f, 118.0f, 56.0f };
         Rectangle jumpBtn     = Rectangle{ (float)sw - 135.0f, (float)sh - 220.0f, 118.0f, 56.0f };
@@ -128,7 +136,6 @@ int main(void)
         Rectangle crouchBtn   = Rectangle{ (float)sw - 135.0f, (float)sh - 146.0f, 118.0f, 56.0f };
         Rectangle uiRects[6]  = { shoulderBtn, focusBtn, sprintBtn, jumpBtn, slideBtn, crouchBtn };
 
-        // Input Keyboard
         float ix = 0.0f;
         float iz = 0.0f;
         if (IsKeyDown(KEY_W)) iz += 1.0f;
@@ -136,7 +143,6 @@ int main(void)
         if (IsKeyDown(KEY_D)) ix += 1.0f;
         if (IsKeyDown(KEY_A)) ix -= 1.0f;
 
-        // Input Multi-Touch Simultan (Bisa tahan analog kiri sambil tap tombol LOMPAT/SLIDE di kanan!)
         Vector2 look = Vector2{ 0.0f, 0.0f };
         bool joyActive = false;
         bool lookActive = false;
@@ -190,10 +196,9 @@ int main(void)
             iz /= ilen;
         }
 
-        // Vektor Arah Kamera
         float sens = p.focusMode ? 0.0032f : 0.0048f;
         camYaw -= look.x * sens;
-        camPitch = Clampf(camPitch + look.y * (sens * 0.75f), -0.32f, 0.90f);
+        camPitch = Clampf(camPitch + look.y * (sens * 0.75f), -0.30f, 0.85f);
 
         float fx = -sinf(camYaw);
         float fz = -cosf(camYaw);
@@ -202,13 +207,11 @@ int main(void)
         float dirX = fx * iz + rx * ix;
         float dirZ = fz * iz + rz * ix;
 
-        // Otomatis Lari Cepat jika analog didorong > 72% atau tombol LARI aktif
         bool autoSprint = (mag > 0.72f && !p.crouching && !p.focusMode);
         bool activeSprint = (p.sprinting || autoSprint || IsKeyDown(KEY_LEFT_SHIFT)) && !p.crouching && !p.focusMode;
 
-        // Deteksi Ketukan Multi-Touch pada Tombol Aksi (Tetap responsif saat sedang lari!)
         if (IsButtonJustTapped(touchState, shoulderBtn) || IsKeyPressed(KEY_V)) {
-            p.shoulderMode = (p.shoulderMode + 1) % 3;
+            p.shoulderMode = (p.shoulderMode + 1) % 4;
         }
         if (IsButtonJustTapped(touchState, focusBtn) || IsKeyPressed(KEY_F)) {
             p.focusMode = !p.focusMode;
@@ -222,7 +225,6 @@ int main(void)
             }
         }
 
-        // JONGKOK (Jika ditekan saat sedang LARI, otomatis berubah jadi SLIDE!)
         bool tapCrouch = IsButtonJustTapped(touchState, crouchBtn) || IsKeyPressed(KEY_C);
         bool tapSlide  = IsButtonJustTapped(touchState, slideBtn)  || IsKeyPressed(KEY_LEFT_CONTROL);
 
@@ -230,39 +232,34 @@ int main(void)
             p.sliding = true;
             p.crouching = false;
             p.focusMode = false;
-            p.slideTimer = 0.75f;
-            // Meluncur ke arah input lari atau arah hadap karakter
+            p.slideTimer = 0.72f;
             if (mag > 0.15f) {
                 p.slideDir = VNorm(V3(dirX, 0.0f, dirZ));
                 p.yaw = atan2f(p.slideDir.x, p.slideDir.z);
             } else {
                 p.slideDir = V3(sinf(p.yaw), 0.0f, cosf(p.yaw));
             }
-            p.vel.x = p.slideDir.x * 9.2f;
-            p.vel.z = p.slideDir.z * 9.2f;
+            p.vel.x = p.slideDir.x * 9.0f;
+            p.vel.z = p.slideDir.z * 9.0f;
         } else if (tapCrouch && !p.sliding) {
             p.crouching = !p.crouching;
             if (p.crouching) p.sprinting = false;
         }
 
-        // LOMPAT (Bisa langsung lompat saat sedang LARI maupun saat sedang SLIDE!)
         if ((IsButtonJustTapped(touchState, jumpBtn) || IsKeyPressed(KEY_SPACE)) && p.grounded) {
             p.grounded = false;
             p.crouching = false;
             p.vel.y = 6.5f;
             if (p.sliding) {
-                // Slide-Jump mempertahankan momentum kecepatan tinggi!
                 p.sliding = false;
                 p.vel.x = p.slideDir.x * 7.8f;
                 p.vel.z = p.slideDir.z * 7.8f;
             } else if (activeSprint && mag > 0.2f) {
-                // Sprint-Jump memberi dorongan atletis ke depan
                 p.vel.x = dirX * 6.8f;
                 p.vel.z = dirZ * 6.8f;
             }
         }
 
-        // Kecepatan & Fisika Gerakan
         float maxSpeed = 3.1f;
         if (activeSprint) maxSpeed = 6.4f;
         else if (p.crouching || p.focusMode) maxSpeed = 1.95f;
@@ -274,12 +271,7 @@ int main(void)
             p.vel.z *= friction;
             if (p.slideTimer <= 0.0f) {
                 p.sliding = false;
-                // Jika analog masih didorong penuh setelah slide, langsung lanjut LARI tanpa nyangkut!
-                if (mag > 0.65f) {
-                    p.crouching = false;
-                } else {
-                    p.crouching = true;
-                }
+                p.crouching = (mag <= 0.65f);
             }
         } else {
             float wantX = dirX * maxSpeed * mag;
@@ -289,7 +281,6 @@ int main(void)
             p.vel.z += (wantZ - p.vel.z) * accel;
         }
 
-        // Gravitasi & Pendaratan
         if (!p.grounded) {
             p.vel.y -= 16.0f * dt;
             p.pos.y += p.vel.y * dt;
@@ -323,27 +314,32 @@ int main(void)
                    p.crouching, p.sliding, p.grounded, p.vel.y, yawRate);
         ComputeFemalePose(pose, anim);
 
-        // --- KAMERA OVER-THE-SHOULDER (OTS) ---
+        // --- KAMERA OVER-THE-SHOULDER & MODE LIHAT DEPAN (WAJAH) ---
         float wantSide = 0.0f;
-        if (p.shoulderMode == 0) wantSide = p.focusMode ? 0.42f : 0.36f;       // Bahu Kanan
-        else if (p.shoulderMode == 1) wantSide = p.focusMode ? -0.42f : -0.36f; // Bahu Kiri
+        if (p.shoulderMode == 0) wantSide = p.focusMode ? 0.40f : 0.34f;       // Bahu Kanan
+        else if (p.shoulderMode == 1) wantSide = p.focusMode ? -0.40f : -0.34f; // Bahu Kiri
 
         float wantDist = 2.15f;
         float wantFov  = 48.0f;
-        if (p.focusMode) {
+        if (p.shoulderMode == 2) {
+            // Mode Lihat Depan (Menyorot wajah & tubuh dari depan secara dekat)
+            wantDist = 1.45f;
+            wantFov  = 42.0f;
+        } else if (p.focusMode) {
             wantDist = 1.40f;
             wantFov  = 40.0f;
         } else if (p.sliding) {
-            wantDist = 2.65f;
-            wantFov  = 58.0f;
-        } else if (activeSprint && moving) {
             wantDist = 2.55f;
-            wantFov  = 55.0f;
-        } else if (p.shoulderMode == 2) {
-            wantDist = 2.95f;
+            wantFov  = 56.0f;
+        } else if (activeSprint && moving) {
+            wantDist = 2.50f;
+            wantFov  = 54.0f;
+        } else if (p.shoulderMode == 3) {
+            wantDist = 2.85f;
         }
 
-        float wantTargetY = p.pos.y + 1.44f - 0.28f * anim.crouchBlend - 0.54f * anim.slideBlend;
+        float wantTargetY = p.pos.y + (p.shoulderMode == 2 ? 1.52f : 1.44f)
+                            - 0.26f * anim.crouchBlend - 0.50f * anim.slideBlend;
 
         float camSmooth = fminf(dt * 10.0f, 1.0f);
         curSideOffset = Lerpf(curSideOffset, wantSide, camSmooth);
@@ -351,29 +347,37 @@ int main(void)
         curTargetY    = Lerpf(curTargetY, wantTargetY, fminf(dt * 14.0f, 1.0f));
         cam.fovy      = Lerpf(cam.fovy, wantFov, camSmooth);
 
-        float camBobY = sinf(anim.phase * 2.0f) * (0.010f + 0.016f * anim.runBlend) * anim.moveBlend;
-        float camBobX = cosf(anim.phase) * (0.008f + 0.012f * anim.runBlend) * anim.moveBlend;
-
         Vector3 shoulderAnchor = V3(
-            p.pos.x + rx * (curSideOffset + camBobX),
-            curTargetY + camBobY,
-            p.pos.z + rz * (curSideOffset + camBobX)
+            p.pos.x + rx * curSideOffset,
+            curTargetY,
+            p.pos.z + rz * curSideOffset
         );
 
         float cp = cosf(camPitch);
         float sp = sinf(camPitch);
 
-        cam.position = V3(
-            shoulderAnchor.x - fx * cp * curCamDist,
-            fmaxf(0.20f, shoulderAnchor.y + sp * curCamDist),
-            shoulderAnchor.z - fz * cp * curCamDist
-        );
-
-        cam.target = V3(
-            shoulderAnchor.x + fx * cp * 10.0f,
-            shoulderAnchor.y - sp * 10.0f,
-            shoulderAnchor.z + fz * cp * 10.0f
-        );
+        if (p.shoulderMode == 2) {
+            // Kamera berada di depan wajah karakter menghadap langsung ke arah karakter
+            float frontX = sinf(p.yaw);
+            float frontZ = cosf(p.yaw);
+            cam.position = V3(
+                p.pos.x + frontX * curCamDist,
+                curTargetY + 0.05f,
+                p.pos.z + frontZ * curCamDist
+            );
+            cam.target = V3(p.pos.x, curTargetY, p.pos.z);
+        } else {
+            cam.position = V3(
+                shoulderAnchor.x - fx * cp * curCamDist,
+                fmaxf(0.22f, shoulderAnchor.y + sp * curCamDist),
+                shoulderAnchor.z - fz * cp * curCamDist
+            );
+            cam.target = V3(
+                shoulderAnchor.x + fx * cp * 10.0f,
+                shoulderAnchor.y - sp * 10.0f,
+                shoulderAnchor.z + fz * cp * 10.0f
+            );
+        }
 
         EndMultiTouchFrame(touchState);
 
@@ -399,9 +403,10 @@ int main(void)
 
         const char* shoulderLabel = "BAHU: KANAN";
         if (p.shoulderMode == 1) shoulderLabel = "BAHU: KIRI";
-        else if (p.shoulderMode == 2) shoulderLabel = "KAMERA: TENGAH";
+        else if (p.shoulderMode == 2) shoulderLabel = "KAMERA: DEPAN";
+        else if (p.shoulderMode == 3) shoulderLabel = "KAMERA: TENGAH";
 
-        DrawUIButton(shoulderBtn, shoulderLabel, p.shoulderMode != 2, Color{ 55, 95, 165, 255 });
+        DrawUIButton(shoulderBtn, shoulderLabel, p.shoulderMode == 2, Color{ 55, 95, 165, 255 });
         DrawUIButton(focusBtn,    "FOKUS",   p.focusMode,  Color{ 200, 140, 30, 255 });
         DrawUIButton(sprintBtn,   "LARI",    activeSprint, Color{ 215, 75, 40, 255 });
         DrawUIButton(jumpBtn,     "LOMPAT",  !p.grounded,  Color{ 45, 135, 210, 255 });

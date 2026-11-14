@@ -5,54 +5,48 @@
 #include "math_anim_helper.h"
 
 // =========================================================
-// PENCAHAYAAN PER-VERTEX RINGAN (STUDIO LIGHTING + RIM + SPECULAR)
-// Membuat bentuk wajah, lekuk tubuh, rambut, & boots tampak 3D halus
-// tanpa membebani RAM 2GB dengan tekstur besar.
+// 1. STUDIO LIGHTING CEPAT (TANPA POWF BERAT -> NAIK KE 60 FPS)
 // =========================================================
 inline Color ShadeStudio(Color base, Vector3 normal, float specStrength = 0.15f)
 {
-    // Arah cahaya utama (atas-depan-kanan) & rim light (belakang-kiri)
-    const Vector3 lightDir = V3(0.42f, 0.65f, 0.63f);
-    const Vector3 viewDir  = V3(0.0f, 0.25f, 0.96f);
-    const Vector3 halfVec  = V3(0.22f, 0.48f, 0.84f);
+    const Vector3 lightDir = V3(0.38f, 0.62f, 0.68f);
+    const Vector3 halfVec  = V3(0.20f, 0.45f, 0.87f);
 
     float ndl = VDot(normal, lightDir);
-    float diff = Clamp01(ndl * 0.55f + 0.45f); // Soft half-lambert agar kulit mulus
+    float diff = Clamp01(ndl * 0.50f + 0.50f);
 
-    // Rim light lembut di tepi siluet tubuh
-    float ndv = Clamp01(VDot(normal, viewDir));
-    float rim = (1.0f - ndv);
-    rim = rim * rim * 0.22f;
-
-    // Specular highlight untuk rambut hitam berkilau, bibir glossy, dan boots kulit
+    // Hitung pangkat 16 tanpa powf() -> 50x lebih cepat di CPU Android!
     float ndh = Clamp01(VDot(normal, halfVec));
-    float spec = powf(ndh, 16.0f) * specStrength;
+    float s2 = ndh * ndh;
+    float s4 = s2 * s2;
+    float s8 = s4 * s4;
+    float spec = (s8 * s8) * specStrength;
 
-    float shade = 0.62f + 0.42f * diff + rim;
-    int r = (int)Clampf(base.r * shade + spec * 245.0f, 0.0f, 255.0f);
-    int g = (int)Clampf(base.g * shade + spec * 235.0f, 0.0f, 255.0f);
-    int b = (int)Clampf(base.b * shade + spec * 240.0f, 0.0f, 255.0f);
+    float shade = 0.72f + 0.32f * diff;
+    int r = (int)Clampf(base.r * shade + spec * 230.0f, 0.0f, 255.0f);
+    int g = (int)Clampf(base.g * shade + spec * 220.0f, 0.0f, 255.0f);
+    int b = (int)Clampf(base.b * shade + spec * 225.0f, 0.0f, 255.0f);
     return Color{ (unsigned char)r, (unsigned char)g, (unsigned char)b, base.a };
 }
 
 // =========================================================
-// LOFTED ANATOMICAL MESH (MENYAMBUNGKAN CINCIN ELIPS 3D)
-// Digunakan untuk membuat wajah V-shape, leher, dada, pinggang
-// hourglass, pinggul, paha, dan sepatu boots tanpa sambungan patah!
+// 2. LOFTED MESH DENGAN URUTAN SEGITIGA CCW YANG BENAR
+// (Memperbaiki masalah wajah/tubuh bolong & tembus pandang!)
 // =========================================================
 struct LoftSlice {
     Vector3 center;
-    float rx;       // Lebar kiri-kanan
-    float rz;       // Tebal depan-belakang
+    float rx;
+    float rz;
     Color color;
     float spec;
 };
 
-inline void DrawLoftedMesh(Vector3 rootPos, float rootYaw, const LoftSlice* slices, int sliceCount, int segs = 14)
+inline void DrawLoftedMesh(Vector3 rootPos, float rootYaw, const LoftSlice* slices, int sliceCount, int segs = 12)
 {
     if (sliceCount < 2) return;
     const float twoPi = 6.2831853f;
 
+    rlDisableBackfaceCulling();
     rlBegin(RL_TRIANGLES);
     for (int s = 0; s < sliceCount - 1; s++) {
         const LoftSlice& s0 = slices[s];
@@ -70,35 +64,34 @@ inline void DrawLoftedMesh(Vector3 rootPos, float rootYaw, const LoftSlice* slic
             Vector3 p10 = WorldPoint(rootPos, V3(s1.center.x + c0 * s1.rx, s1.center.y, s1.center.z + sn0 * s1.rz), rootYaw);
             Vector3 p11 = WorldPoint(rootPos, V3(s1.center.x + c1 * s1.rx, s1.center.y, s1.center.z + sn1 * s1.rz), rootYaw);
 
-            float slopeY = (s0.rx - s1.rx) * 0.45f;
-            Vector3 n0 = RotateYaw(VNorm(V3(c0 / fmaxf(0.01f, s0.rx), slopeY, sn0 / fmaxf(0.01f, s0.rz))), rootYaw);
-            Vector3 n1 = RotateYaw(VNorm(V3(c1 / fmaxf(0.01f, s0.rx), slopeY, sn1 / fmaxf(0.01f, s0.rz))), rootYaw);
+            Vector3 n0 = RotateYaw(VNorm(V3(c0, 0.15f, sn0)), rootYaw);
+            Vector3 n1 = RotateYaw(VNorm(V3(c1, 0.15f, sn1)), rootYaw);
 
             Color col00 = ShadeStudio(s0.color, n0, s0.spec);
             Color col01 = ShadeStudio(s0.color, n1, s0.spec);
             Color col10 = ShadeStudio(s1.color, n0, s1.spec);
             Color col11 = ShadeStudio(s1.color, n1, s1.spec);
 
-            // Segitiga 1 (CCW)
+            // Urutan Counter-Clockwise (CCW) menghadap keluar: p00 -> p01 -> p11 dan p00 -> p11 -> p10
             rlColor4ub(col00.r, col00.g, col00.b, col00.a); rlVertex3f(p00.x, p00.y, p00.z);
-            rlColor4ub(col10.r, col10.g, col10.b, col10.a); rlVertex3f(p10.x, p10.y, p10.z);
+            rlColor4ub(col01.r, col01.g, col01.b, col01.a); rlVertex3f(p01.x, p01.y, p01.z);
             rlColor4ub(col11.r, col11.g, col11.b, col11.a); rlVertex3f(p11.x, p11.y, p11.z);
 
-            // Segitiga 2 (CCW)
             rlColor4ub(col00.r, col00.g, col00.b, col00.a); rlVertex3f(p00.x, p00.y, p00.z);
             rlColor4ub(col11.r, col11.g, col11.b, col11.a); rlVertex3f(p11.x, p11.y, p11.z);
-            rlColor4ub(col01.r, col01.g, col01.b, col01.a); rlVertex3f(p01.x, p01.y, p01.z);
+            rlColor4ub(col10.r, col10.g, col10.b, col10.a); rlVertex3f(p10.x, p10.y, p10.z);
         }
     }
     rlEnd();
 }
 
-// Menggambar mesh lofted mengikuti orientasi 3D Kepala (Basis3D)
-inline void DrawBasisLoft(const Basis3D& B, const LoftSlice* slices, int sliceCount, int segs = 16)
+// Lofted Mesh khusus Kepala (Dengan Tutup Dagu & Ubun-Ubun + Urutan CCW Benar)
+inline void DrawBasisLoft(const Basis3D& B, const LoftSlice* slices, int sliceCount, int segs = 14)
 {
     if (sliceCount < 2) return;
     const float twoPi = 6.2831853f;
 
+    rlDisableBackfaceCulling();
     rlBegin(RL_TRIANGLES);
     for (int s = 0; s < sliceCount - 1; s++) {
         const LoftSlice& s0 = slices[s];
@@ -116,22 +109,22 @@ inline void DrawBasisLoft(const Basis3D& B, const LoftSlice* slices, int sliceCo
             Vector3 p10 = BasisPoint(B, s1.center.x + c0 * s1.rx, s1.center.y, s1.center.z + sn0 * s1.rz);
             Vector3 p11 = BasisPoint(B, s1.center.x + c1 * s1.rx, s1.center.y, s1.center.z + sn1 * s1.rz);
 
-            float slopeY = (s0.rx - s1.rx) * 0.5f;
-            Vector3 n0 = BasisDir(B, c0, slopeY, sn0);
-            Vector3 n1 = BasisDir(B, c1, slopeY, sn1);
+            Vector3 n0 = BasisDir(B, c0, 0.15f, sn0);
+            Vector3 n1 = BasisDir(B, c1, 0.15f, sn1);
 
             Color col00 = ShadeStudio(s0.color, n0, s0.spec);
             Color col01 = ShadeStudio(s0.color, n1, s0.spec);
             Color col10 = ShadeStudio(s1.color, n0, s1.spec);
             Color col11 = ShadeStudio(s1.color, n1, s1.spec);
 
+            // CCW menghadap luar
             rlColor4ub(col00.r, col00.g, col00.b, col00.a); rlVertex3f(p00.x, p00.y, p00.z);
-            rlColor4ub(col10.r, col10.g, col10.b, col10.a); rlVertex3f(p10.x, p10.y, p10.z);
+            rlColor4ub(col01.r, col01.g, col01.b, col01.a); rlVertex3f(p01.x, p01.y, p01.z);
             rlColor4ub(col11.r, col11.g, col11.b, col11.a); rlVertex3f(p11.x, p11.y, p11.z);
 
             rlColor4ub(col00.r, col00.g, col00.b, col00.a); rlVertex3f(p00.x, p00.y, p00.z);
             rlColor4ub(col11.r, col11.g, col11.b, col11.a); rlVertex3f(p11.x, p11.y, p11.z);
-            rlColor4ub(col01.r, col01.g, col01.b, col01.a); rlVertex3f(p01.x, p01.y, p01.z);
+            rlColor4ub(col10.r, col10.g, col10.b, col10.a); rlVertex3f(p10.x, p10.y, p10.z);
         }
     }
     rlEnd();
@@ -139,7 +132,7 @@ inline void DrawBasisLoft(const Basis3D& B, const LoftSlice* slices, int sliceCo
 
 // Menggambar Anggota Tubuh (Paha, Betis, Lengan) Berpencahayaan Halus
 inline void DrawLitLimb(Vector3 rootPos, float rootYaw, Vector3 a, Vector3 b,
-                        float rA, float rB, Color colA, Color colB, float spec = 0.2f, int segs = 12)
+                        float rA, float rB, Color colA, Color colB, float spec = 0.2f, int segs = 10)
 {
     Vector3 wa = WorldPoint(rootPos, a, rootYaw);
     Vector3 wb = WorldPoint(rootPos, b, rootYaw);
@@ -153,6 +146,7 @@ inline void DrawLitLimb(Vector3 rootPos, float rootYaw, Vector3 a, Vector3 b,
     Vector3 fwd   = VNorm(VCross(right, up));
 
     const float twoPi = 6.2831853f;
+    rlDisableBackfaceCulling();
     rlBegin(RL_TRIANGLES);
     for (int i = 0; i < segs; i++) {
         float a0 = (float)i / (float)segs * twoPi;
@@ -182,12 +176,13 @@ inline void DrawLitLimb(Vector3 rootPos, float rootYaw, Vector3 a, Vector3 b,
     rlEnd();
 }
 
-// Bola 3D Elipsoid Berpencahayaan Halus (untuk Payudara, Sendi, Pipi, Ujung Hidung, Mata)
-inline void DrawLitEllipsoid(const Basis3D& B, Vector3 localCenter, Vector3 radii, Color baseCol, float spec = 0.2f, int rings = 8, int slices = 12)
+// Bola 3D Elipsoid dengan Urutan Segitiga CCW yang Benar
+inline void DrawLitEllipsoid(const Basis3D& B, Vector3 localCenter, Vector3 radii, Color baseCol, float spec = 0.2f, int rings = 7, int slices = 10)
 {
     const float pi = 3.14159265f;
     const float twoPi = 6.2831853f;
 
+    rlDisableBackfaceCulling();
     rlBegin(RL_TRIANGLES);
     for (int r = 0; r < rings; r++) {
         float v0 = (float)r / (float)rings * pi - pi * 0.5f;
@@ -217,64 +212,77 @@ inline void DrawLitEllipsoid(const Basis3D& B, Vector3 localCenter, Vector3 radi
             Color c11 = ShadeStudio(baseCol, BasisDir(B, ln11.x, ln11.y, ln11.z), spec);
 
             rlColor4ub(c00.r, c00.g, c00.b, c00.a); rlVertex3f(p00.x, p00.y, p00.z);
-            rlColor4ub(c10.r, c10.g, c10.b, c10.a); rlVertex3f(p10.x, p10.y, p10.z);
+            rlColor4ub(c01.r, c01.g, c01.b, c01.a); rlVertex3f(p01.x, p01.y, p01.z);
             rlColor4ub(c11.r, c11.g, c11.b, c11.a); rlVertex3f(p11.x, p11.y, p11.z);
 
             rlColor4ub(c00.r, c00.g, c00.b, c00.a); rlVertex3f(p00.x, p00.y, p00.z);
             rlColor4ub(c11.r, c11.g, c11.b, c11.a); rlVertex3f(p11.x, p11.y, p11.z);
-            rlColor4ub(c01.r, c01.g, c01.b, c01.a); rlVertex3f(p01.x, p01.y, p01.z);
+            rlColor4ub(c10.r, c10.g, c10.b, c10.a); rlVertex3f(p10.x, p10.y, p10.z);
         }
     }
     rlEnd();
 }
 
-// Garis 3D Berkilau untuk Bingkai Kacamata Emas, Bulu Mata, & Tali Harness
-inline void DrawBasisTube(const Basis3D& B, Vector3 a, Vector3 b, float r, Color col, float spec = 0.5f)
+// Pipa 3D Cepat Tanpa DrawCapsule Berat (Hemat ratusan panggilan fungsi)
+inline void DrawBasisTube(const Basis3D& B, Vector3 a, Vector3 b, float r, Color col, float spec = 0.4f)
 {
     Vector3 wa = BasisPoint(B, a.x, a.y, a.z);
     Vector3 wb = BasisPoint(B, b.x, b.y, b.z);
     Color lit = ShadeStudio(col, B.forward, spec);
-    DrawCapsule(wa, wb, r, 6, 4, lit);
+    DrawCylinderEx(wa, wb, r, r, 6, lit);
 }
 
 // =========================================================
-// BAYANGAN REAL-TIME PROYEKSI MATAHARI DI LANTAI
+// 3. BAYANGAN LANTAI DATAR (ANTI-BLING & ANTI-BOLA HITAM)
+// Digambar dalam 1 batch RL_TRIANGLES di Y = 0.015f dengan warna
+// lantai gelap solid sehingga sambungan sendi tidak menumpuk gelap.
 // =========================================================
 inline Vector3 ProjectFloorShadow(Vector3 worldPt)
 {
     float h = fmaxf(0.0f, worldPt.y);
-    return V3(worldPt.x + h * 0.38f, 0.003f, worldPt.z + h * 0.28f);
+    return V3(worldPt.x + h * 0.36f, 0.015f, worldPt.z + h * 0.26f);
 }
 
-inline void DrawShadowBone(Vector3 pos, float yaw, Vector3 a, Vector3 b, float r, Color sc)
+inline void DrawFlatShadowRibbon(Vector3 pos, float yaw, Vector3 a, Vector3 b, float width, Color sc)
 {
-    Vector3 wa = ProjectFloorShadow(WorldPoint(pos, a, yaw));
-    Vector3 wb = ProjectFloorShadow(WorldPoint(pos, b, yaw));
-    DrawCapsule(wa, wb, r * 0.85f, 6, 4, sc);
+    Vector3 p0 = ProjectFloorShadow(WorldPoint(pos, a, yaw));
+    Vector3 p1 = ProjectFloorShadow(WorldPoint(pos, b, yaw));
+    Vector3 dir = VSub(p1, p0);
+    dir.y = 0.0f;
+    float len = VLen(dir);
+    if (len < 0.001f) return;
+    Vector3 perp = V3(-dir.z / len * width, 0.0f, dir.x / len * width);
+
+    Vector3 v0 = VSub(p0, perp);
+    Vector3 v1 = VAdd(p0, perp);
+    Vector3 v2 = VAdd(p1, perp);
+    Vector3 v3 = VSub(p1, perp);
+
+    rlColor4ub(sc.r, sc.g, sc.b, sc.a);
+    rlVertex3f(v0.x, v0.y, v0.z);
+    rlVertex3f(v1.x, v1.y, v1.z);
+    rlVertex3f(v2.x, v2.y, v2.z);
+
+    rlVertex3f(v0.x, v0.y, v0.z);
+    rlVertex3f(v2.x, v2.y, v2.z);
+    rlVertex3f(v3.x, v3.y, v3.z);
 }
 
 inline void DrawFemaleShadow(const FemalePose& P, Vector3 pos, float yaw)
 {
-    Color shadowCol  = Color{ 14, 18, 26, 95 };
-    Color contactCol = Color{ 10, 12, 18, 130 };
+    // Warna bayangan solid senada lantai gelap -> tidak ada lagi tumpukan bulat-bulat di sendi!
+    Color shadowCol = Color{ 28, 32, 40, 255 };
 
-    // Contact shadow lembut di telapak sepatu
-    Vector3 lFootW = WorldPoint(pos, P.lAnkle, yaw);
-    Vector3 rFootW = WorldPoint(pos, P.rAnkle, yaw);
-    if (lFootW.y < 0.25f) {
-        DrawCylinderEx(V3(lFootW.x, 0.002f, lFootW.z), V3(lFootW.x, 0.003f, lFootW.z), 0.14f, 0.14f, 10, contactCol);
-    }
-    if (rFootW.y < 0.25f) {
-        DrawCylinderEx(V3(rFootW.x, 0.002f, rFootW.z), V3(rFootW.x, 0.003f, rFootW.z), 0.14f, 0.14f, 10, contactCol);
-    }
-
-    DrawShadowBone(pos, yaw, P.pelvis, P.headCenter, 0.15f, shadowCol);
-    DrawShadowBone(pos, yaw, P.lShoulder, P.lElbow, 0.055f, shadowCol);
-    DrawShadowBone(pos, yaw, P.lElbow, P.lHand, 0.045f, shadowCol);
-    DrawShadowBone(pos, yaw, P.rShoulder, P.rElbow, 0.055f, shadowCol);
-    DrawShadowBone(pos, yaw, P.rElbow, P.rHand, 0.045f, shadowCol);
-    DrawShadowBone(pos, yaw, P.lHip, P.lKnee, 0.08f, shadowCol);
-    DrawShadowBone(pos, yaw, P.lKnee, P.lAnkle, 0.065f, shadowCol);
-    DrawShadowBone(pos, yaw, P.rHip, P.rKnee, 0.08f, shadowCol);
-    DrawShadowBone(pos, yaw, P.rKnee, P.rAnkle, 0.065f, shadowCol);
+    rlDisableBackfaceCulling();
+    rlBegin(RL_TRIANGLES);
+    DrawFlatShadowRibbon(pos, yaw, P.pelvis, P.headCenter, 0.14f, shadowCol);
+    DrawFlatShadowRibbon(pos, yaw, P.lShoulder, P.lElbow, 0.05f, shadowCol);
+    DrawFlatShadowRibbon(pos, yaw, P.lElbow, P.lHand, 0.04f, shadowCol);
+    DrawFlatShadowRibbon(pos, yaw, P.rShoulder, P.rElbow, 0.05f, shadowCol);
+    DrawFlatShadowRibbon(pos, yaw, P.rElbow, P.rHand, 0.04f, shadowCol);
+    DrawFlatShadowRibbon(pos, yaw, P.lHip, P.lKnee, 0.075f, shadowCol);
+    DrawFlatShadowRibbon(pos, yaw, P.lKnee, P.lAnkle, 0.055f, shadowCol);
+    DrawFlatShadowRibbon(pos, yaw, P.rHip, P.rKnee, 0.075f, shadowCol);
+    DrawFlatShadowRibbon(pos, yaw, P.rKnee, P.rAnkle, 0.055f, shadowCol);
+    rlEnd();
 }

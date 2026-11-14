@@ -3,283 +3,236 @@
 #include "render_helper.h"
 
 // =========================================================
-// 1. WAJAH ANIME/SEMI-REALISTIS V-JAW, KACAMATA EMAS, & RAMBUT
-// Sesuai Referensi Gambar 2: Kulit Porselen, Mata Almond Eyeliner,
-// Bibir Glossy Merah Rose, Kacamata Emas Rantai, & 2 Kuncir Depan
+// 1. WAJAH PORSELEN CERAH, MATA ALMOND, KACAMATA EMAS & RAMBUT
+// (Rambut bagian belakang diposisikan di Z negatif sehingga TIDAK PERNAH
+//  menutupi kulit wajah dari depan!)
 // =========================================================
 inline void DrawSculptedHeadAndHair(const FemalePose& P, Vector3 rootPos, float rootYaw, float blink)
 {
-    const Color skinBase   = Color{ 250, 235, 228, 255 }; // Porselen cerah halus
-    const Color skinBlush  = Color{ 244, 198, 196, 255 }; // Rona pipi lembut
-    const Color lipUpper   = Color{ 168, 42, 54, 255 };   // Bibir atas rose-crimson
-    const Color lipLower   = Color{ 192, 56, 68, 255 };   // Bibir bawah glossy penuh
-    const Color eyeWhite   = Color{ 248, 248, 252, 255 };
-    const Color eyeShadow  = Color{ 175, 132, 125, 255 }; // Smoky eyeshadow kelopak mata
-    const Color irisCol    = Color{ 112, 82, 68, 255 };   // Iris cokelat hazel lembut
-    const Color lashCol    = Color{ 18, 14, 18, 255 };    // Eyeliner & bulu mata lentik
-    const Color hairBlack  = Color{ 18, 18, 24, 255 };    // Rambut hitam legam berkilau
-    const Color hairTieCol = Color{ 12, 12, 15, 255 };
-    const Color goldCol    = Color{ 232, 195, 82, 255 };  // Emas kacamata & rantai
+    const Color skinBase   = Color{ 252, 236, 226, 255 }; // Kulit wajah porselen cerah
+    const Color skinBlush  = Color{ 248, 212, 208, 255 }; // Pipi merona halus
+    const Color lipUpper   = Color{ 185, 45, 58, 255 };   // Bibir merah rose
+    const Color lipLower   = Color{ 210, 62, 74, 255 };   // Bibir bawah glossy
+    const Color eyeWhite   = Color{ 250, 250, 255, 255 };
+    const Color irisCol    = Color{ 115, 78, 62, 255 };   // Iris cokelat hazel
+    const Color lashCol    = Color{ 20, 16, 20, 255 };    // Eyeliner & bulu mata hitam
+    const Color hairBlack  = Color{ 20, 20, 26, 255 };    // Rambut hitam berkilau
+    const Color hairTieCol = Color{ 45, 12, 18, 255 };    // Ikatan rambut depan
+    const Color goldCol    = Color{ 238, 202, 90, 255 };  // Bingkai & rantai kacamata emas
 
     Vector3 worldHeadPos = WorldPoint(rootPos, P.headCenter, rootYaw);
     Basis3D H = MakeBasis(worldHeadPos, rootYaw + P.headYawOff, P.headPitch, P.headRoll);
 
-    // A. KONTUR WAJAH V-SHAPE (Dagu lancip anggun, tulang pipi tirus, dahi mulus)
+    // A. KONTUR WAJAH V-SHAPE (Dagu lancip, pipi mulus, dahi tertutup poni atas)
     LoftSlice headSlices[7] = {
-        { V3(0.0f, -0.105f,  0.032f), 0.022f, 0.026f, skinBase,  0.15f }, // Ujung dagu V-shape lancip
-        { V3(0.0f, -0.072f,  0.015f), 0.068f, 0.078f, skinBase,  0.12f }, // Garis rahang bawah tirus
-        { V3(0.0f, -0.028f,  0.006f), 0.098f, 0.108f, skinBlush, 0.18f }, // Pipi & rona blush
-        { V3(0.0f,  0.015f,  0.000f), 0.108f, 0.118f, skinBase,  0.15f }, // Tulang pipi & area mata
-        { V3(0.0f,  0.065f, -0.006f), 0.106f, 0.120f, skinBase,  0.15f }, // Dahi
-        { V3(0.0f,  0.108f, -0.014f), 0.085f, 0.102f, skinBase,  0.12f }, // Kepala atas
-        { V3(0.0f,  0.130f, -0.020f), 0.035f, 0.045f, hairBlack, 0.45f }  // Puncak ubun-ubun
+        { V3(0.0f, -0.108f,  0.024f), 0.018f, 0.022f, skinBase,  0.12f }, // Ujung dagu V-shape
+        { V3(0.0f, -0.075f,  0.012f), 0.064f, 0.074f, skinBase,  0.12f }, // Rahang bawah tirus
+        { V3(0.0f, -0.030f,  0.006f), 0.092f, 0.104f, skinBlush, 0.15f }, // Pipi
+        { V3(0.0f,  0.015f,  0.002f), 0.100f, 0.112f, skinBase,  0.15f }, // Area mata & tulang pipi
+        { V3(0.0f,  0.062f, -0.002f), 0.098f, 0.110f, skinBase,  0.12f }, // Dahi
+        { V3(0.0f,  0.102f, -0.008f), 0.082f, 0.096f, hairBlack, 0.45f }, // Batas rambut atas
+        { V3(0.0f,  0.126f, -0.015f), 0.032f, 0.040f, hairBlack, 0.45f }  // Puncak kepala
     };
-    DrawBasisLoft(H, headSlices, 7, 18);
+    DrawBasisLoft(H, headSlices, 7, 16);
 
-    // B. HIDUNG MANCUNG & BIBIR GLOSSY
-    DrawBasisTube(H, V3(0.0f, 0.018f, 0.114f), V3(0.0f, -0.024f, 0.129f), 0.0085f, skinBase, 0.25f);
-    DrawLitEllipsoid(H, V3(0.0f, -0.026f, 0.128f), V3(0.011f, 0.009f, 0.012f), skinBase, 0.30f, 6, 8);
+    // B. HIDUNG MANCUNG & BIBIR MERAH GLOSSY (Di permukaan depan Z = +0.112..+0.126)
+    DrawBasisTube(H, V3(0.0f, 0.016f, 0.112f), V3(0.0f, -0.024f, 0.126f), 0.008f, skinBase, 0.25f);
+    DrawLitEllipsoid(H, V3(0.0f, -0.025f, 0.124f), V3(0.010f, 0.008f, 0.010f), skinBase, 0.25f, 5, 8);
 
-    // Bibir atas (Cupid's bow) & bibir bawah penuh berkilau
-    DrawBasisTube(H, V3(-0.022f, -0.056f, 0.108f), V3(0.0f, -0.053f, 0.116f), 0.0065f, lipUpper, 0.55f);
-    DrawBasisTube(H, V3( 0.000f, -0.053f, 0.116f), V3(0.022f, -0.056f, 0.108f), 0.0065f, lipUpper, 0.55f);
-    DrawLitEllipsoid(H, V3(0.0f, -0.062f, 0.112f), V3(0.021f, 0.0075f, 0.011f), lipLower, 0.75f, 6, 10);
-    // Titik kilau bibir (Lip gloss highlight)
-    DrawLitEllipsoid(H, V3(0.005f, -0.061f, 0.121f), V3(0.005f, 0.0025f, 0.003f), eyeWhite, 0.9f, 4, 6);
+    // Bibir atas & bawah
+    DrawBasisTube(H, V3(-0.020f, -0.055f, 0.104f), V3(0.0f, -0.052f, 0.112f), 0.006f, lipUpper, 0.5f);
+    DrawBasisTube(H, V3( 0.000f, -0.052f, 0.112f), V3(0.020f, -0.055f, 0.104f), 0.006f, lipUpper, 0.5f);
+    DrawLitEllipsoid(H, V3(0.0f, -0.062f, 0.108f), V3(0.019f, 0.007f, 0.009f), lipLower, 0.7f, 5, 8);
 
-    // C. MATA ALMOND / CAT-EYE + EYELINER + BULU MATA + ALIS
+    // C. MATA ALMOND PROPORSIONAL + EYELINER + ALIS + KACAMATA EMAS RANTAI
     for (int side = -1; side <= 1; side += 2) {
         float sx = (float)side;
-        float ex = 0.044f * sx;
+        float ex = 0.042f * sx;
         float ey = 0.014f;
-        float ez = 0.105f;
-
-        // Eyeshadow kelopak atas
-        DrawLitEllipsoid(H, V3(ex, ey + 0.006f, ez - 0.003f), V3(0.024f, 0.012f, 0.010f), eyeShadow, 0.2f, 6, 8);
+        float ez = 0.104f;
 
         if (blink < 0.85f) {
             float openScale = 1.0f - blink * 0.9f;
-            // Sclera berbentuk almond (lebar horizontal, ramping vertikal)
-            DrawLitEllipsoid(H, V3(ex, ey, ez), V3(0.021f, 0.0105f * openScale, 0.009f), eyeWhite, 0.4f, 6, 10);
-            // Iris cokelat hazel & pupil hitam
-            DrawLitEllipsoid(H, V3(ex, ey, ez + 0.005f), V3(0.0115f, 0.010f * openScale, 0.006f), irisCol, 0.5f, 6, 10);
-            DrawLitEllipsoid(H, V3(ex, ey, ez + 0.008f), V3(0.0065f, 0.0065f * openScale, 0.004f), lashCol, 0.6f, 5, 8);
-            // Catchlight (Pantulan cahaya putih di mata agar hidup!)
-            DrawLitEllipsoid(H, V3(ex - 0.004f * sx, ey + 0.0035f * openScale, ez + 0.011f),
-                             V3(0.0032f, 0.0032f, 0.002f), eyeWhite, 1.0f, 4, 6);
+            // Putih mata (Sclera)
+            DrawLitEllipsoid(H, V3(ex, ey, ez), V3(0.018f, 0.0095f * openScale, 0.006f), eyeWhite, 0.3f, 5, 8);
+            // Iris cokelat & pupil hitam di depannya
+            DrawLitEllipsoid(H, V3(ex, ey, ez + 0.004f), V3(0.0105f, 0.009f * openScale, 0.004f), irisCol, 0.4f, 5, 8);
+            DrawLitEllipsoid(H, V3(ex, ey, ez + 0.006f), V3(0.0055f, 0.0055f * openScale, 0.003f), lashCol, 0.5f, 4, 6);
+            // Pantulan cahaya mata (Catchlight kecil)
+            DrawLitEllipsoid(H, V3(ex - 0.0035f * sx, ey + 0.003f * openScale, ez + 0.0085f),
+                             V3(0.0025f, 0.0025f, 0.002f), eyeWhite, 0.9f, 4, 6);
         }
 
-        // Garis Eyeliner Winged (Meruncing ke sudut luar seperti referensi)
-        float lidDrop = blink * 0.012f;
-        Vector3 innerCorner = V3(ex - 0.019f * sx, ey - 0.003f, ez + 0.003f);
-        Vector3 midUpper    = V3(ex + 0.002f * sx, ey + 0.010f - lidDrop, ez + 0.007f);
-        Vector3 outerWing   = V3(ex + 0.025f * sx, ey + 0.004f - lidDrop * 0.5f, ez - 0.002f);
-        Vector3 wingTip     = V3(ex + 0.032f * sx, ey + 0.009f, ez - 0.006f);
-        DrawBasisTube(H, innerCorner, midUpper, 0.0028f, lashCol, 0.4f);
-        DrawBasisTube(H, midUpper, outerWing, 0.0032f, lashCol, 0.4f);
-        DrawBasisTube(H, outerWing, wingTip, 0.0022f, lashCol, 0.4f);
+        // Garis Eyeliner Winged
+        float lidDrop = blink * 0.010f;
+        Vector3 inC  = V3(ex - 0.017f * sx, ey - 0.002f, ez + 0.003f);
+        Vector3 midC = V3(ex + 0.002f * sx, ey + 0.009f - lidDrop, ez + 0.006f);
+        Vector3 outC = V3(ex + 0.023f * sx, ey + 0.004f - lidDrop * 0.5f, ez - 0.001f);
+        DrawBasisTube(H, inC, midC, 0.0026f, lashCol, 0.3f);
+        DrawBasisTube(H, midC, outC, 0.0028f, lashCol, 0.3f);
 
-        // Alis melengkung rapi
-        Vector3 browIn  = V3(ex - 0.016f * sx, ey + 0.026f, ez + 0.004f);
-        Vector3 browMid = V3(ex + 0.006f * sx, ey + 0.032f, ez + 0.002f);
-        Vector3 browOut = V3(ex + 0.028f * sx, ey + 0.023f, ez - 0.006f);
-        DrawBasisTube(H, browIn, browMid, 0.0035f, lashCol, 0.3f);
-        DrawBasisTube(H, browMid, browOut, 0.0026f, lashCol, 0.3f);
+        // Alis rapi
+        DrawBasisTube(H, V3(ex - 0.015f * sx, ey + 0.025f, ez + 0.004f),
+                         V3(ex + 0.006f * sx, ey + 0.030f, ez + 0.002f), 0.0032f, lashCol, 0.3f);
+        DrawBasisTube(H, V3(ex + 0.006f * sx, ey + 0.030f, ez + 0.002f),
+                         V3(ex + 0.026f * sx, ey + 0.022f, ez - 0.004f), 0.0025f, lashCol, 0.3f);
 
-        // D. KACAMATA OVAL EMAS + RANTAI EMAS MENJUNTAI (Sesuai Referensi)
-        float gx = 0.046f * sx;
-        float gy = 0.008f;
-        float gz = 0.122f;
-        const int gSegs = 12;
+        // Bingkai Kacamata Oval Emas (di depan mata Z = +0.120)
+        float gx = 0.044f * sx;
+        float gy = 0.009f;
+        float gz = 0.120f;
+        const int gSegs = 10;
         const float twoPi = 6.2831853f;
         for (int i = 0; i < gSegs; i++) {
             float a0 = (float)i / (float)gSegs * twoPi;
             float a1 = (float)(i + 1) / (float)gSegs * twoPi;
-            Vector3 p0 = V3(gx + cosf(a0) * 0.032f, gy + sinf(a0) * 0.018f, gz - fabsf(cosf(a0)) * 0.005f);
-            Vector3 p1 = V3(gx + cosf(a1) * 0.032f, gy + sinf(a1) * 0.018f, gz - fabsf(cosf(a1)) * 0.005f);
+            Vector3 p0 = V3(gx + cosf(a0) * 0.030f, gy + sinf(a0) * 0.017f, gz - fabsf(cosf(a0)) * 0.004f);
+            Vector3 p1 = V3(gx + cosf(a1) * 0.030f, gy + sinf(a1) * 0.017f, gz - fabsf(cosf(a1)) * 0.004f);
             DrawBasisTube(H, p0, p1, 0.0022f, goldCol, 0.85f);
         }
 
-        // Engsel luar kacamata & Rantai Emas Berayun
-        Vector3 hinge = V3(gx + 0.034f * sx, gy + 0.004f, gz - 0.008f);
-        Vector3 earPt = V3(0.106f * sx, gy + 0.002f, 0.010f);
+        // Gagang & Rantai Kacamata Emas Menjuntai di Samping Pipi
+        Vector3 hinge = V3(gx + 0.031f * sx, gy + 0.003f, gz - 0.006f);
+        Vector3 earPt = V3(0.098f * sx, gy, 0.010f);
         DrawBasisTube(H, hinge, earPt, 0.0020f, goldCol, 0.85f);
 
         Vector3 prevLink = hinge;
-        for (int c = 1; c <= 8; c++) {
-            float t = (float)c / 8.0f;
-            float drapeZ = -sinf(t * 3.14159f) * 0.028f;
+        for (int c = 1; c <= 6; c++) {
+            float t = (float)c / 6.0f;
             Vector3 nextLink = V3(
-                hinge.x + sx * (0.008f * sinf(t * 3.14f)) + P.chainFlow.x * t,
-                hinge.y - t * 0.28f + P.chainFlow.y * t * 0.4f,
-                hinge.z + drapeZ - t * 0.035f + P.chainFlow.z * t
+                hinge.x + sx * 0.010f + P.chainFlow.x * t * 0.5f,
+                hinge.y - t * 0.25f + P.chainFlow.y * t * 0.3f,
+                hinge.z - t * 0.03f + P.chainFlow.z * t * 0.5f
             );
             DrawBasisTube(H, prevLink, nextLink, 0.0018f, goldCol, 0.9f);
-            DrawLitEllipsoid(H, nextLink, V3(0.0032f, 0.0042f, 0.0032f), goldCol, 0.9f, 4, 6);
             prevLink = nextLink;
         }
     }
-    // Jembatan hidung kacamata emas melengkung
-    DrawBasisTube(H, V3(-0.014f, 0.012f, 0.123f), V3(0.0f, 0.016f, 0.126f), 0.0022f, goldCol, 0.85f);
-    DrawBasisTube(H, V3( 0.000f, 0.016f, 0.126f), V3(0.014f, 0.012f, 0.123f), 0.0022f, goldCol, 0.85f);
+    // Jembatan hidung kacamata emas
+    DrawBasisTube(H, V3(-0.014f, 0.012f, 0.121f), V3(0.014f, 0.012f, 0.121f), 0.0022f, goldCol, 0.85f);
 
-    // E. VOLUME RAMBUT HITAM PANJANG, PONI SAMPING, & 2 KUNCIR DEPAN (Sesuai Referensi)
-    // Mahkota rambut bervolume di kepala atas & belakang
-    DrawLitEllipsoid(H, V3(-0.025f, 0.045f, -0.018f), V3(0.112f, 0.115f, 0.118f), hairBlack, 0.55f, 8, 12);
-    DrawLitEllipsoid(H, V3( 0.025f, 0.045f, -0.018f), V3(0.112f, 0.115f, 0.118f), hairBlack, 0.55f, 8, 12);
+    // D. RAMBUT BELAKANG, PONI SAMPING, & 2 KUNCIR DEPAN
+    // Tempurung rambut belakang (Digeser ke Z = -0.042f agar TIDAK PERNAH menembus wajah depan!)
+    DrawLitEllipsoid(H, V3(0.0f, 0.032f, -0.042f), V3(0.108f, 0.112f, 0.095f), hairBlack, 0.5f, 7, 12);
 
-    // Poni belah tengah/samping menjuntai lembut membingkai wajah & kacamata
+    // Poni belah samping membingkai pelipis & pipi luar (Tidak menutupi mata!)
     for (int side = -1; side <= 1; side += 2) {
         float sx = (float)side;
-        Vector3 b0 = V3(0.008f * sx, 0.118f, 0.088f);
-        Vector3 b1 = V3(0.058f * sx, 0.068f, 0.112f);
-        Vector3 b2 = V3(0.096f * sx, -0.005f, 0.086f);
-        Vector3 b3 = V3(0.104f * sx, -0.075f, 0.048f);
-        DrawBasisTube(H, b0, b1, 0.024f, hairBlack, 0.6f);
-        DrawBasisTube(H, b1, b2, 0.020f, hairBlack, 0.6f);
-        DrawBasisTube(H, b2, b3, 0.014f, hairBlack, 0.6f);
-        // Helaian tipis poni melewati tepi kacamata
-        DrawBasisTube(H, V3(0.015f * sx, 0.112f, 0.095f), V3(0.048f * sx, 0.025f, 0.118f), 0.006f, hairBlack, 0.6f);
+        DrawBasisTube(H, V3(0.012f * sx, 0.112f, 0.082f), V3(0.072f * sx, 0.062f, 0.092f), 0.022f, hairBlack, 0.55f);
+        DrawBasisTube(H, V3(0.072f * sx, 0.062f, 0.092f), V3(0.098f * sx, -0.015f, 0.055f), 0.020f, hairBlack, 0.55f);
 
-        // Dua Untai Rambut Depan Panjang dengan Ikatan Hitam di Atas Dada (Ciri Khas Gambar 2)
-        Vector3 lockTop = WorldPoint(rootPos, VAdd(P.headCenter, V3(0.095f * sx, -0.04f, 0.03f)), rootYaw);
-        Vector3 lockMid = WorldPoint(rootPos, VAdd(P.chest, V3(0.092f * sx + P.hairFlow.x * 0.35f,
-                                     0.035f + P.hairFlow.y * 0.25f, 0.125f + P.hairFlow.z * 0.25f)), rootYaw);
-        Vector3 lockTip = WorldPoint(rootPos, VAdd(P.chest, V3(0.102f * sx + P.hairFlow.x * 0.75f,
-                                     -0.19f + P.hairFlow.y * 0.5f, 0.115f + P.hairFlow.z * 0.55f)), rootYaw);
-
-        Color litHair = ShadeStudio(hairBlack, H.forward, 0.55f);
-        DrawCapsule(lockTop, lockMid, 0.022f, 8, 6, litHair);
-        // Pita lilitan ikat rambut hitam di dada
-        DrawCapsule(VAdd(lockMid, V3(0.0f, 0.018f, 0.0f)), VAdd(lockMid, V3(0.0f, -0.018f, 0.0f)), 0.026f, 8, 6, hairTieCol);
-        DrawCapsule(lockMid, lockTip, 0.019f, 8, 6, litHair);
+        // Dua Untai Rambut Depan Terikat di Atas Dada (Sesuai Referensi Gambar 2)
+        Vector3 fTop = VAdd(P.headCenter, V3(0.092f * sx, -0.03f, 0.035f));
+        Vector3 fTie = VAdd(P.chest, V3(0.088f * sx, 0.03f, 0.122f));
+        Vector3 fTip = VAdd(P.chest, V3(0.095f * sx + P.hairFlow.x * 0.3f, -0.17f, 0.115f));
+        DrawLitLimb(rootPos, rootYaw, fTop, fTie, 0.021f, 0.018f, hairBlack, hairBlack, 0.5f, 8);
+        DrawLitLimb(rootPos, rootYaw, VAdd(fTie, V3(0.0f, 0.014f, 0.0f)), VAdd(fTie, V3(0.0f, -0.014f, 0.0f)),
+                    0.023f, 0.023f, hairTieCol, hairTieCol, 0.3f, 8);
+        DrawLitLimb(rootPos, rootYaw, fTie, fTip, 0.018f, 0.010f, hairBlack, hairBlack, 0.5f, 8);
     }
 
-    // Rambut Panjang Belakang Terurai Lebat dengan Fisika Ayunan Halus
+    // Rambut Panjang Belakang (Selalu berada di belakang punggung Z <= -0.11f agar tidak masuk ke baju)
+    float backZ = fminf(-0.11f, -0.11f + P.hairFlow.z * 0.6f);
     LoftSlice backHair[5] = {
-        { VAdd(P.headCenter, V3(0.0f,  0.04f, -0.07f)), 0.115f, 0.055f, hairBlack, 0.55f },
-        { VAdd(P.neckBase,   V3(P.hairFlow.x * 0.2f,  0.02f, -0.09f + P.hairFlow.z * 0.2f)), 0.135f, 0.050f, hairBlack, 0.55f },
-        { VAdd(P.chest,      V3(P.hairFlow.x * 0.5f,  0.02f + P.hairFlow.y * 0.3f, -0.11f + P.hairFlow.z * 0.5f)), 0.150f, 0.045f, hairBlack, 0.55f },
-        { VAdd(P.waist,      V3(P.hairFlow.x * 0.9f,  0.05f + P.hairFlow.y * 0.6f, -0.12f + P.hairFlow.z * 0.9f)), 0.140f, 0.038f, hairBlack, 0.55f },
-        { VAdd(P.waist,      V3(P.hairFlow.x * 1.3f, -0.12f + P.hairFlow.y * 1.0f, -0.13f + P.hairFlow.z * 1.3f)), 0.095f, 0.025f, hairBlack, 0.55f }
+        { VAdd(P.headCenter, V3(0.0f,  0.03f, -0.075f)),                 0.105f, 0.045f, hairBlack, 0.5f },
+        { VAdd(P.neckBase,   V3(P.hairFlow.x * 0.2f,  0.01f, -0.095f)),  0.122f, 0.042f, hairBlack, 0.5f },
+        { VAdd(P.chest,      V3(P.hairFlow.x * 0.4f,  0.01f,  backZ)),   0.135f, 0.038f, hairBlack, 0.5f },
+        { VAdd(P.waist,      V3(P.hairFlow.x * 0.7f,  0.04f,  backZ - 0.02f)), 0.125f, 0.032f, hairBlack, 0.5f },
+        { VAdd(P.waist,      V3(P.hairFlow.x * 1.0f, -0.12f,  backZ - 0.03f)), 0.080f, 0.022f, hairBlack, 0.5f }
     };
-    DrawLoftedMesh(rootPos, rootYaw, backHair, 5, 12);
+    DrawLoftedMesh(rootPos, rootYaw, backHair, 5, 10);
 }
 
 // =========================================================
 // 2. TUBUH HOURGLASS, SWEATER DRESS MERAH MARUN, HARNESS & BOOTS
-// Sesuai Referensi Gambar 1 & 2
 // =========================================================
 inline void DrawFemaleCharacter(const FemalePose& P, Vector3 pos, float yaw, float blink)
 {
-    const Color skinCol      = Color{ 250, 235, 228, 255 };
-    const Color dressBright  = Color{ 148, 22, 38, 255 };   // Merah marun terang (bagian terkena cahaya)
-    const Color dressMid     = Color{ 122, 16, 30, 255 };   // Merah marun rajut
-    const Color dressDeep    = Color{ 88, 10, 22, 255 };    // Lipatan pinggang & kerah gelap
-    const Color stockingCol  = Color{ 32, 28, 34, 255 };    // Stocking hitam sheer
-    const Color stockingTop  = Color{ 22, 20, 24, 255 };
-    const Color bootLeather  = Color{ 18, 18, 22, 255 };    // Kulit boots hitam mengilap
-    const Color leatherGear  = Color{ 24, 22, 26, 255 };    // Harness & holster hitam
-    const Color silverBuckle = Color{ 205, 210, 220, 255 };
+    const Color skinCol      = Color{ 252, 236, 226, 255 };
+    const Color dressBright  = Color{ 156, 24, 40, 255 };
+    const Color dressMid     = Color{ 128, 18, 32, 255 };
+    const Color dressDeep    = Color{ 94, 12, 24, 255 };
+    const Color stockingCol  = Color{ 34, 30, 36, 255 };
+    const Color stockingTop  = Color{ 24, 22, 26, 255 };
+    const Color bootLeather  = Color{ 18, 18, 22, 255 };
+    const Color leatherGear  = Color{ 24, 22, 26, 255 };
+    const Color silverBuckle = Color{ 210, 215, 225, 255 };
 
-    // 1. Gambar Bayangan Real-Time di Lantai
+    // 1. Gambar Bayangan Datar Bebas Kedip
     DrawFemaleShadow(P, pos, yaw);
 
-    // 2. TUBUH HOURGLASS MULUS (Dari Rok Mini -> Pinggul -> Pinggang Ramping -> Dada -> Kerah Turtleneck)
+    // 2. TUBUH HOURGLASS & DRESS MERAH MARUN
     Vector3 hipMid = P.pelvis;
     Vector3 wst    = P.waist;
     Vector3 chs    = P.chest;
     Vector3 nck    = P.neckBase;
 
+    // Rok bawah mengikuti arah rata-rata paha agar paha tidak menembus rok saat jongkok/slide
+    float legAvgZ = (P.lKnee.z + P.rKnee.z) * 0.24f;
+    float legAvgY = (P.lKnee.y + P.rKnee.y) * 0.12f;
+
     LoftSlice dressSlices[9] = {
-        // Hem bawah rok mini rajut (pas di atas paha)
-        { V3(hipMid.x, hipMid.y - 0.21f, hipMid.z + (P.lKnee.z + P.rKnee.z) * 0.16f), 0.182f, 0.128f, dressDeep,   0.18f },
-        // Panggul bawah & lengkung bokong (Glutes curve)
-        { V3(hipMid.x, hipMid.y - 0.08f, hipMid.z - 0.018f),                          0.192f, 0.142f, dressBright, 0.22f },
-        // Pinggul utama (Lebar feminin)
-        { V3(hipMid.x, hipMid.y + 0.02f, hipMid.z - 0.008f),                          0.180f, 0.126f, dressMid,    0.20f },
-        // Pinggang Hourglass Ramping
-        { V3(wst.x,    wst.y,            wst.z),                                      0.118f, 0.088f, dressDeep,   0.15f },
-        // Rusuk bawah (Ribcage)
-        { V3(chs.x,    chs.y - 0.09f,    chs.z),                                      0.138f, 0.098f, dressMid,    0.20f },
-        // Dada penuh (Full Chest contour)
-        { V3(chs.x,    chs.y + 0.01f,    chs.z + 0.018f),                             0.156f, 0.118f, dressBright, 0.26f },
-        // Bahu atas & leher bawah
-        { V3(chs.x,    chs.y + 0.09f,    chs.z),                                      0.168f, 0.092f, dressMid,    0.20f },
-        // Pangkal kerah turtleneck
-        { V3(nck.x,    nck.y - 0.01f,    nck.z),                                      0.062f, 0.058f, dressDeep,   0.18f },
-        // Kerah tinggi Turtleneck merah marun
-        { V3(nck.x,    nck.y + 0.055f,   nck.z),                                      0.056f, 0.054f, dressBright, 0.22f }
+        { V3(hipMid.x, hipMid.y - 0.20f + legAvgY, hipMid.z + legAvgZ), 0.175f, 0.125f, dressDeep,   0.18f },
+        { V3(hipMid.x, hipMid.y - 0.08f + legAvgY * 0.5f, hipMid.z - 0.010f + legAvgZ * 0.5f), 0.185f, 0.136f, dressBright, 0.22f },
+        { V3(hipMid.x, hipMid.y + 0.02f, hipMid.z - 0.005f),            0.172f, 0.120f, dressMid,    0.20f },
+        { V3(wst.x,    wst.y,            wst.z),                        0.115f, 0.086f, dressDeep,   0.15f },
+        { V3(chs.x,    chs.y - 0.08f,    chs.z),                        0.135f, 0.095f, dressMid,    0.20f },
+        { V3(chs.x,    chs.y + 0.01f,    chs.z + 0.015f),               0.152f, 0.114f, dressBright, 0.25f },
+        { V3(chs.x,    chs.y + 0.085f,   chs.z),                        0.162f, 0.088f, dressMid,    0.20f },
+        { V3(nck.x,    nck.y - 0.01f,    nck.z),                        0.060f, 0.056f, dressDeep,   0.18f },
+        { V3(nck.x,    nck.y + 0.05f,    nck.z),                        0.054f, 0.052f, dressBright, 0.22f }
     };
-    DrawLoftedMesh(pos, yaw, dressSlices, 9, 18);
+    DrawLoftedMesh(pos, yaw, dressSlices, 9, 16);
 
-    // Leher atas porselen menyambung ke kepala
-    DrawLitLimb(pos, yaw, VAdd(nck, V3(0.0f, 0.045f, 0.0f)), P.headCenter, 0.048f, 0.044f, skinCol, skinCol, 0.15f, 12);
+    // Leher atas menyambung ke dagu
+    DrawLitLimb(pos, yaw, VAdd(nck, V3(0.0f, 0.04f, 0.0f)), P.headCenter, 0.046f, 0.042f, skinCol, skinCol, 0.15f, 10);
 
-    // 3. KONTUR PAYUDARA (BUST) & AKSEN POTONGAN DADA (Sesuai Referensi)
+    // Kontur Dada
     Basis3D chestBasis = MakeBasis(WorldPoint(pos, chs, yaw), yaw + P.spineTwist * 0.5f, P.torsoLean, 0.0f);
     for (int side = -1; side <= 1; side += 2) {
-        float sx = (float)side;
-        DrawLitEllipsoid(chestBasis, V3(0.068f * sx, 0.005f + P.bustBounce, 0.068f),
-                         V3(0.074f, 0.068f, 0.072f), dressBright, 0.28f, 8, 12);
+        DrawLitEllipsoid(chestBasis, V3(0.064f * (float)side, 0.005f + P.bustBounce, 0.062f),
+                         V3(0.068f, 0.062f, 0.065f), dressBright, 0.25f, 6, 10);
     }
-    // Kontur bokong belakang (Glutes) agar siluet samping proporsional seperti Gambar 1
+
+    // 3. LENGAN & SARUNG TANGAN KULIT HITAM
+    DrawLitLimb(pos, yaw, P.lShoulder, P.lElbow, 0.050f, 0.040f, dressBright, dressMid, 0.20f, 10);
+    DrawLitLimb(pos, yaw, P.lElbow, P.lWrist,    0.039f, 0.032f, dressMid, dressDeep,   0.20f, 10);
+    DrawLitLimb(pos, yaw, P.lWrist, P.lHand,     0.035f, 0.026f, leatherGear, leatherGear, 0.50f, 8);
+
+    DrawLitLimb(pos, yaw, P.rShoulder, P.rElbow, 0.050f, 0.040f, dressBright, dressMid, 0.20f, 10);
+    DrawLitLimb(pos, yaw, P.rElbow, P.rWrist,    0.039f, 0.032f, dressMid, dressDeep,   0.20f, 10);
+    DrawLitLimb(pos, yaw, P.rWrist, P.rHand,     0.035f, 0.026f, leatherGear, leatherGear, 0.50f, 8);
+
+    // 4. KAKI (STOCKING & BOOTS TINGGI)
+    DrawLitLimb(pos, yaw, P.lHip, P.lKnee, 0.086f, 0.058f, stockingTop, stockingCol, 0.30f, 12);
+    DrawLitLimb(pos, yaw, P.rHip, P.rKnee, 0.086f, 0.058f, stockingTop, stockingCol, 0.30f, 12);
+
+    Vector3 lBootCuff = VLerp(P.lHip, P.lKnee, 0.90f);
+    Vector3 rBootCuff = VLerp(P.rHip, P.rKnee, 0.90f);
+    DrawLitLimb(pos, yaw, lBootCuff, P.lKnee,  0.064f, 0.062f, bootLeather, bootLeather, 0.60f, 12);
+    DrawLitLimb(pos, yaw, P.lKnee,   P.lAnkle, 0.060f, 0.044f, bootLeather, bootLeather, 0.60f, 12);
+    DrawLitLimb(pos, yaw, rBootCuff, P.rKnee,  0.064f, 0.062f, bootLeather, bootLeather, 0.60f, 12);
+    DrawLitLimb(pos, yaw, P.rKnee,   P.rAnkle, 0.060f, 0.044f, bootLeather, bootLeather, 0.60f, 12);
+
+    DrawLitLimb(pos, yaw, P.lAnkle, P.lToe, 0.044f, 0.026f, bootLeather, bootLeather, 0.65f, 8);
+    DrawLitLimb(pos, yaw, P.rAnkle, P.rToe, 0.044f, 0.026f, bootLeather, bootLeather, 0.65f, 8);
+
+    // Hak Sepatu Boots
+    DrawLitLimb(pos, yaw, VAdd(P.lAnkle, V3(0.0f, -0.01f, -0.025f)), VAdd(P.lAnkle, V3(0.0f, -0.08f, -0.025f)), 0.015f, 0.009f, bootLeather, bootLeather, 0.65f, 6);
+    DrawLitLimb(pos, yaw, VAdd(P.rAnkle, V3(0.0f, -0.01f, -0.025f)), VAdd(P.rAnkle, V3(0.0f, -0.08f, -0.025f)), 0.015f, 0.009f, bootLeather, bootLeather, 0.65f, 6);
+
+    // 5. HARNESS BAHU, SABUK PINGGANG, & HOLSTER PAHA
+    DrawBasisTube(chestBasis, V3(-0.09f, 0.06f, 0.095f), V3(0.09f, 0.06f, 0.095f), 0.012f, leatherGear, 0.5f);
+    DrawBasisTube(chestBasis, V3(-0.12f, 0.08f, 0.000f), V3(-0.09f, 0.06f, 0.095f), 0.013f, leatherGear, 0.5f);
+    DrawBasisTube(chestBasis, V3( 0.12f, 0.08f, 0.000f), V3( 0.09f, 0.06f, 0.095f), 0.013f, leatherGear, 0.5f);
+
     Basis3D pelvisBasis = MakeBasis(WorldPoint(pos, hipMid, yaw), yaw, 0.0f, 0.0f);
-    for (int side = -1; side <= 1; side += 2) {
-        DrawLitEllipsoid(pelvisBasis, V3(0.065f * (float)side, -0.05f, -0.055f),
-                         V3(0.078f, 0.082f, 0.072f), dressMid, 0.22f, 7, 10);
-    }
+    DrawBasisTube(pelvisBasis, V3(-0.15f, 0.10f, 0.095f), V3(0.15f, 0.06f, 0.095f), 0.013f, leatherGear, 0.5f);
+    DrawLitEllipsoid(pelvisBasis, V3(0.03f, 0.08f, 0.105f), V3(0.016f, 0.012f, 0.008f), silverBuckle, 0.8f, 4, 6);
 
-    // 4. LENGAN RAMPING & SARUNG TANGAN KULIT HITAM
-    DrawLitLimb(pos, yaw, P.lShoulder, P.lElbow, 0.052f, 0.042f, dressBright, dressMid, 0.20f, 12);
-    DrawLitLimb(pos, yaw, P.lElbow, P.lWrist,    0.041f, 0.033f, dressMid, dressDeep,   0.20f, 12);
-    DrawLitLimb(pos, yaw, P.lWrist, P.lHand,     0.036f, 0.028f, leatherGear, leatherGear, 0.55f, 10);
-
-    DrawLitLimb(pos, yaw, P.rShoulder, P.rElbow, 0.052f, 0.042f, dressBright, dressMid, 0.20f, 12);
-    DrawLitLimb(pos, yaw, P.rElbow, P.rWrist,    0.041f, 0.033f, dressMid, dressDeep,   0.20f, 12);
-    DrawLitLimb(pos, yaw, P.rWrist, P.rHand,     0.036f, 0.028f, leatherGear, leatherGear, 0.55f, 10);
-
-    // 5. KAKI JENJANG (STOCKING SHEER + SEPATU BOOTS TINGGI HAK STILETTO)
-    // Paha Kiri & Kanan (Stocking hitam sheer dengan kilau halus)
-    DrawLitLimb(pos, yaw, P.lHip, P.lKnee, 0.092f, 0.062f, stockingTop, stockingCol, 0.35f, 14);
-    DrawLitLimb(pos, yaw, P.rHip, P.rKnee, 0.092f, 0.062f, stockingTop, stockingCol, 0.35f, 14);
-
-    // Sepatu Boots Kulit Setinggi Lutut (Knee-High Leather Boots)
-    Vector3 lBootCuff = VLerp(P.lHip, P.lKnee, 0.92f);
-    Vector3 rBootCuff = VLerp(P.rHip, P.rKnee, 0.92f);
-    DrawLitLimb(pos, yaw, lBootCuff, P.lKnee,  0.068f, 0.065f, bootLeather, bootLeather, 0.65f, 14);
-    DrawLitLimb(pos, yaw, P.lKnee,   P.lAnkle, 0.064f, 0.045f, bootLeather, bootLeather, 0.65f, 14);
-    DrawLitLimb(pos, yaw, rBootCuff, P.rKnee,  0.068f, 0.065f, bootLeather, bootLeather, 0.65f, 14);
-    DrawLitLimb(pos, yaw, P.rKnee,   P.rAnkle, 0.064f, 0.045f, bootLeather, bootLeather, 0.65f, 14);
-
-    // Punggung Sepatu Meruncip & Hak Tinggi (Stiletto Heels)
-    DrawLitLimb(pos, yaw, P.lAnkle, P.lToe, 0.046f, 0.028f, bootLeather, bootLeather, 0.70f, 10);
-    DrawLitLimb(pos, yaw, P.rAnkle, P.rToe, 0.046f, 0.028f, bootLeather, bootLeather, 0.70f, 10);
-    Vector3 lHeelTop = VAdd(P.lAnkle, V3(0.0f, -0.01f, -0.028f));
-    Vector3 lHeelBot = VAdd(P.lAnkle, V3(0.0f, -0.082f, -0.028f));
-    Vector3 rHeelTop = VAdd(P.rAnkle, V3(0.0f, -0.01f, -0.028f));
-    Vector3 rHeelBot = VAdd(P.rAnkle, V3(0.0f, -0.082f, -0.028f));
-    DrawLitLimb(pos, yaw, lHeelTop, lHeelBot, 0.016f, 0.009f, bootLeather, bootLeather, 0.70f, 8);
-    DrawLitLimb(pos, yaw, rHeelTop, rHeelBot, 0.016f, 0.009f, bootLeather, bootLeather, 0.70f, 8);
-
-    // 6. HARNESS BAHU TAKTIS, SABUK PINGGANG MIRING, & HOLSTER PAHA (Sesuai Referensi Gambar 1)
-    DrawBasisTube(chestBasis, V3(-0.095f, 0.065f, 0.095f), V3(0.095f, 0.065f, 0.095f), 0.012f, leatherGear, 0.5f);
-    DrawBasisTube(chestBasis, V3(-0.125f, 0.085f, 0.000f), V3(-0.095f, 0.065f, 0.095f), 0.014f, leatherGear, 0.5f);
-    DrawBasisTube(chestBasis, V3( 0.125f, 0.085f, 0.000f), V3( 0.095f, 0.065f, 0.095f), 0.014f, leatherGear, 0.5f);
-    // Holster bawah ketiak kiri
-    DrawBasisTube(chestBasis, V3(-0.145f, 0.01f, 0.02f), V3(-0.145f, -0.08f, 0.04f), 0.022f, leatherGear, 0.5f);
-
-    // Sabuk kulit melingkar miring di pinggang bawah + gesper perak
-    DrawBasisTube(pelvisBasis, V3(-0.155f, 0.11f, 0.095f), V3(0.160f, 0.06f, 0.095f), 0.014f, leatherGear, 0.55f);
-    DrawBasisTube(pelvisBasis, V3(-0.155f, 0.11f, -0.095f), V3(0.160f, 0.06f, -0.095f), 0.014f, leatherGear, 0.55f);
-    DrawLitEllipsoid(pelvisBasis, V3(0.035f, 0.082f, 0.108f), V3(0.018f, 0.014f, 0.008f), silverBuckle, 0.9f, 5, 8);
-
-    // Strap ganda & Holster di paha kiri
     Vector3 lThighMid = VLerp(P.lHip, P.lKnee, 0.45f);
-    DrawLitLimb(pos, yaw, VAdd(lThighMid, V3(0.0f,  0.022f, 0.0f)), VAdd(lThighMid, V3(0.0f,  0.002f, 0.0f)), 0.082f, 0.081f, leatherGear, leatherGear, 0.5f, 12);
-    DrawLitLimb(pos, yaw, VAdd(lThighMid, V3(0.0f, -0.022f, 0.0f)), VAdd(lThighMid, V3(0.0f, -0.042f, 0.0f)), 0.079f, 0.078f, leatherGear, leatherGear, 0.5f, 12);
-    DrawLitLimb(pos, yaw, VAdd(lThighMid, V3(-0.082f, 0.04f, 0.0f)), VAdd(lThighMid, V3(-0.082f, -0.09f, 0.015f)), 0.022f, 0.018f, leatherGear, leatherGear, 0.5f, 8);
+    DrawLitLimb(pos, yaw, VAdd(lThighMid, V3(-0.078f, 0.04f, 0.0f)), VAdd(lThighMid, V3(-0.078f, -0.08f, 0.01f)), 0.020f, 0.016f, leatherGear, leatherGear, 0.5f, 6);
 
-    // 7. Gambar Wajah V-Jaw, Mata Almond, Kacamata Emas Rantai & Rambut Hitam Panjang
+    // 6. Gambar Kepala, Wajah, Kacamata Emas, & Rambut
     DrawSculptedHeadAndHair(P, pos, yaw, blink);
 }
