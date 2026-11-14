@@ -44,7 +44,7 @@ int main(void)
     cam.fovy = 60.0f;
     cam.projection = CAMERA_PERSPECTIVE;
 
-    Player p = { Vector3{ 0.0f, 0.0f, 0.0f }, 0.0f, 0.0f, 0.0f, false };
+    Player p = { Vector3{ 0.0f, 0.0f, 0.0f }, 0.0f, 0.0f, 0.0f, true };
 
     float camYaw = 0.0f;
     float camPitch = 0.45f;
@@ -59,11 +59,18 @@ int main(void)
     int lookId = -1;
     Vector2 lookLast = Vector2{ 0.0f, 0.0f };
 
+    BlinkState blink;
+    InitBlink(blink);
+    float animTime = 0.0f;
+
     while (!WindowShouldClose()) {
         float dt = GetFrameTime();
         int sw = GetScreenWidth();
         int sh = GetScreenHeight();
         Rectangle switchBtn = Rectangle{ (float)sw - 190.0f, 20.0f, 170.0f, 50.0f };
+
+        UpdateBlink(blink, dt);
+        animTime += dt;
 
         float ix = 0.0f;
         float iz = 0.0f;
@@ -186,6 +193,8 @@ int main(void)
         };
         cam.target = target;
 
+        float breath = sinf(animTime * 2.2f) * 0.012f;
+
         BeginDrawing();
         ClearBackground(SKYBLUE);
 
@@ -196,7 +205,7 @@ int main(void)
             DrawCubeWires(b.pos, b.size.x, b.size.y, b.size.z, Fade(BLACK, 0.35f));
         }
         if (p.female) {
-            DrawFemaleCharacter(p.pos, p.yaw, p.phase, p.amp);
+            DrawFemaleCharacter(p.pos, p.yaw, p.phase, p.amp, breath, BlinkAmount(blink));
         } else {
             DrawMaleCharacter(p.pos, p.yaw, p.phase, p.amp);
         }
